@@ -1,0 +1,15 @@
+{
+  "chapters": [
+    {
+      "id": "basics",
+      "title": "Basic Number Theory",
+      "source_path": "TestProject/tex/basics.tex",
+      "target_theorems": [
+        "def.double",
+        "thm.double-even",
+        "thm.double-mono",
+        "thm.double-add"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,1378 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+# All rights reserved.
+
+"""Unified Contributor Agent for all formalization work.
+
+The ContributorAgent handles five modes of operation:
+- SKETCH: Create initial file structure from source tex
+- PROVE: Prove a specific assigned theorem
+- MAINTAIN: Pick up issues, add API, refactor, general maintenance
+- SCAN: Find architectural issues and create issues in issues/ folder
+- TRIAGE: Detect resolved issues and close them
+
+All modes share the same tools and produce PRs that go through the same
+review flow. The mode determines the prompt and task-specific behavior.
+
+Key responsibilities:
+- Read source material and existing code
+- Make targeted changes based on mode
+- Commit changes for PR creation
+- Create issues when blocked or during scanning
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass, field
+from enum import Enum
+from logging import getLogger
+from typing import TYPE_CHECKING, Any
+
+from ..lean_utils import has_sorry_or_axiom
+from .base import BaseAgent, dialog_to_text
+from .file_tools import FileToolsMixin
+from .git_worktree_tools import GitWorktreeToolsMixin
+from .lean_tools import LeanToolsMixin
+from .mathlib_tools import MathlibToolsMixin
+from .shell_tools import ShellToolsMixin
+
+if TYPE_CHECKING:
+    pass
+
+logger = getLogger(__name__)
+
+
+# =============================================================================
+# Mode and Task Definitions
+# =============================================================================
+
+
+class ContributorMode(Enum):
+    """Operating modes for the ContributorAgent."""
+
+    SKETCH = "sketch"  # Input: chapter_id
+    PROVE = "prove"  # Input: chapter_id + theorem_name
+    MAINTAIN = "maintain"  # Input: issue_id (optional, can self-select)
+    SCAN = "scan"  # Input: none (scanner decides what to focus on)
+    TRIAGE = "triage"  # Input: none (scans all open issues)
+    FIX = "fix"  # Input: none (agent proposes infrastructure fixes)
+    PROGRESS = "progress"  # Input: none (checks target theorem status and blockers)
+
+
+@dataclass
+class ContributorTask:
+    """Unified task specification for all contributor modes."""
+
+    mode: ContributorMode
+    chapter_id: str | None = None
+    theorem_name: str | None = None
+    issue_id: str | None = None  # UUID string (8-char hex)
+    lean_path: str = ""  # Path to Lean file (relative to repo)
+    source_tex_path: str = ""  # Path to source tex file
+
+    @classmethod
+    def sketch(cls, chapter_id: str, source_tex_path: str = "", lean_path: str = "") -> "ContributorTask":
+        return cls(
+            mode=ContributorMode.SKETCH,
+            chapter_id=chapter_id,
+            source_tex_path=source_tex_path,
+            lean_path=lean_path,
+        )
+
+    @classmethod
+    def prove(
+        cls, chapter_id: str, theorem_name: str, lean_path: str = "", source_tex_path: str = ""
+    ) -> "ContributorTask":
+        return cls(
+            mode=ContributorMode.PROVE,
+            chapter_id=chapter_id,
+            theorem_name=theorem_name,
+            lean_path=lean_path,
+            source_tex_path=source_tex_path,
+        )
+
+    @classmethod
+    def maintain(cls, issue_id: str | None = None, chapter_id: str | None = None) -> "ContributorTask":
+        return cls(mode=ContributorMode.MAINTAIN, issue_id=issue_id, chapter_id=chapter_id)
+
+    @classmethod
+    def scan(cls) -> "ContributorTask":
+        return cls(mode=ContributorMode.SCAN)
+
+    @classmethod
+    def triage(cls) -> "ContributorTask":
+        return cls(mode=ContributorMode.TRIAGE)
+
+    @classmethod
+    def fix(cls) -> "ContributorTask":
+        return cls(mode=ContributorMode.FIX)
+
+    @classmethod
+    def progress(cls) -> "ContributorTask":
+        return cls(mode=ContributorMode.PROGRESS)
+
+
+@dataclass
+class ContributorResult:
+    """Unified result for all contributor modes."""
+
+    task: ContributorTask
+    status: str  # "done", "fix", "issue", "blocked", "failure"
+
+    # For "done" - mergeable work product
+    mergeable_code: str | None = None
+
+    # For "fix" - revision request
+    fix_request: str | None = None
+
+    # For "issue" - issue creation
+    issue_text: str | None = None
+
+    # PR description (shown to reviewers)
+    description: str = ""
+
+    # Metadata
+    learnings: list[str] = field(default_factory=list)
+    run: Any = None
+    error: str | None = None
+
+
+# =============================================================================
+# Shared Base Prompt
+# =============================================================================
+
+CONTRIBUTOR_BASE_PROMPT = """You are a contributor to a Lean 4 book formalization project.
+
+## Project Overview
+
+This project formalizes mathematical content from LaTeX sources into Lean 4.
+See `CONTENTS.md` for the structure of tex sources and the corresponding Lean files (read-only — do not edit this file, it is maintained separately).
+See `issues/` folder for open issues — each `.yaml` file is one issue with `status`, `description`, `origin` fields.
+
+**IMPORTANT:** When your work addresses an issue, update the issue file in `issues/` by changing
+`status: open` to `status: closed`. Use `list_issues()` to browse open issues.
+
+## Tools Available
+
+### File Tools
+- `file_read(path, offset?, limit?)` - Read any file with line numbers
+- `file_write(path, content)` - Write/overwrite a file
+- `file_delete(path)` - Delete a file
+- `file_edit(path, old_string, new_string)` - Replace exact text
+- `file_edit_lines(path, start_line, end_line, new_content)` - Replace by line numbers
+- `file_grep(path, pattern, context_lines?)` - Search for patterns
+- `file_list(path)` - List directory contents
+- `list_issues(status?, max_desc_len?)` - List issues (default: open only, 100 char descriptions)
+- `create_issue(description, origin?)` - Create a new issue with UUID filename
+
+### Git Tools
+- `git_status()` - Check what files have changed
+- `git_add(paths)` - Stage files for commit
+- `git_commit(message)` - Commit staged changes
+- `git_diff(paths?, staged?)` - Show uncommitted changes
+- `git_rebase(branch?)` - Rebase onto main to sync with latest changes
+- `git_rebase_continue()` - Continue after resolving rebase conflicts
+- `git_rebase_abort()` - Abort a rebase in progress
+- `git_checkout_file(ref, paths)` - Get file(s) from a specific ref (e.g., main)
+- `git_conflicts()` - Show conflict markers with line numbers
+
+### Lean Tools
+- `lean_check(code)` - Check arbitrary Lean code for errors
+
+### Shell Tools
+- `bash(command)` - Run shell commands (e.g., `lake build`)
+
+## Quality Standards
+
+- Code must compile (`lake build` succeeds)
+- If adding sorry stubs, statements must be well-typed
+- If proving something, the proof must be complete (no sorry)
+- Follow existing code style and conventions
+
+## Output Markers
+
+Your final output MUST end with exactly ONE of these markers.
+**All outcomes (except BLOCKED) require a commit before outputting the marker.**
+
+Everything after the marker line is the **PR description** shown to reviewers.
+Include "Closes #N" in the description if your work resolves an issue.
+
+### DONE - Committed the requested work
+```
+-- DONE
+<PR description: what this PR does and why>
+<If resolving issues, include "Closes #N">
+```
+
+### FIX - Committed a fix to a blocker
+You couldn't complete the assigned task directly, but fixed something blocking it.
+```
+-- FIX
+<PR description: what was fixed and why>
+Original task still TODO: <what remains>
+<If resolving issues, include "Closes #N">
+```
+
+### ISSUE - Committed an issue to the issues/ folder
+You identified missing infrastructure and documented it as an issue file.
+```
+-- ISSUE
+<PR description: the issue created and why>
+Issue #N: <title>
+```
+
+### BLOCKED - Cannot make progress, nothing committed
+```
+-- BLOCKED
+<Reason why you cannot proceed>
+```
+"""
+
+
+# =============================================================================
+# Mode-Specific Prompts
+# =============================================================================
+
+SKETCH_MODE_PROMPT = """## Mode: SKETCH
+
+Your task is to create the initial Lean file structure for a chapter.
+
+### Input
+- Chapter ID: `{chapter_id}`
+- Source tex: `{source_tex_path}`
+- Target Lean file: `{lean_path}`
+
+### Your Job
+
+1. Read the source tex to understand the mathematical content
+2. Create a Lean file with:
+   - Proper imports (use `import Mathlib`)
+   - Definitions with `sorry` implementations where needed
+   - Theorem/lemma statements with `sorry` proofs
+   - Logical ordering (dependencies come first)
+   - Docstrings explaining the math
+3. The file should compile (`lake build` succeeds)
+
+### Guidelines
+
+#### Imports
+Always start Lean files with:
+```lean
+import Mathlib
+```
+
+#### Definitions
+- Use Mathlib types when available (don't reinvent the wheel)
+- Prefer bundled structures for mathematical objects
+- Add docstrings explaining what each definition represents
+- **Avoid placeholder definitions** (e.g., `fun x => x` or `0` for nontrivial functions)
+- **Definition equivalence**: Any equivalent formulation may serve as the primary definition. What matters is that original_hyps → target is provable. Document any discrepancy from the source and prove the equivalence as a theorem.
+
+#### Theorem Statements
+- Capture the mathematical meaning faithfully
+- Make hypotheses explicit (no hidden assumptions)
+- Use Mathlib naming conventions (camelCase)
+- Leave proofs as `sorry`
+- **Include LaTeX labels in docstrings** if present in source
+
+#### Sorry Markers
+
+Not all `sorry` stubs are equal. Use these markers to classify them:
+
+- `sorry -- [cited]`: The theorem is cited from external literature and the source does NOT provide a proof. Only use this if there is no tex file available for the bibtex entry's source (check `tex/`). If the source proves or re-derives the result, do not mark it `[cited]`.
+- `sorry -- [exercise]`: The result is stated as an exercise without a solution, or is "left to the reader". If the exercise DOES have a solution in the source, do not mark it `[exercise]` — instead formalize the solution approach as the proof strategy.
+- Plain `sorry`: The proof is given in the source and will be filled in by provers.
+
+#### Logical Ordering
+- Place lemmas BEFORE the theorems that use them
+- If Theorem A's proof will require Lemma B, Lemma B must appear first
+- Place theorems where they are PROVED in the source, not where first stated
+
+### What "Good" Looks Like
+
+- Every definition/theorem from the source is represented
+- Names follow Mathlib conventions (camelCase, descriptive)
+- Types are correct (the statements match the math)
+- Dependencies are ordered correctly (no forward references)
+- Helpful comments where the Lean diverges from the tex
+
+### Output
+
+When done, commit your changes and output:
+```
+-- DONE
+Created initial sketch for {chapter_id}.
+
+- N definitions formalized
+- M theorem statements added
+- Dependencies ordered correctly
+
+Key formalizations: <list main theorems>
+```
+"""
+
+PROVE_MODE_PROMPT = """## Mode: PROVE
+
+Your task is to prove a specific theorem.
+
+### Input
+- Chapter: `{chapter_id}`
+- Theorem: `{theorem_name}`
+- Lean file: `{lean_path}`
+- Source tex: `{source_tex_path}` (for proof hints)
+
+### Your Job
+
+1. Find the theorem in the chapter's Lean file
+2. Understand what needs to be proved (read the statement, docstring, source tex)
+3. Develop the proof:
+   - Use Mathlib tactics and lemmas
+   - Break into helper lemmas if needed
+   - Keep proofs readable
+4. Replace the `sorry` with a complete proof
+5. Verify it compiles
+
+### Skip Rules
+
+Theorems marked `sorry -- [cited]` or `sorry -- [exercise]` need not be proved — they are not proof targets. If the theorem you were assigned has one of these markers, output BLOCKED.
+
+If the theorem is an exercise WITH a solution in the source, look for the solution and use it as your proof strategy.
+
+### Key Principle: Use Available Theorems
+
+**CRITICAL**: The Lean file includes ALL theorems stated before your target — both already-proved ones AND ones still marked `sorry`. **Use these theorems where possible to write the simplest, most direct proof.**
+
+- If a theorem earlier in the file provides exactly what you need, USE IT (even if it's `sorry`)
+- The theorems marked `sorry` are being worked on in parallel — they are valid to use
+- Do NOT re-derive lemmas when a simple application of earlier theorems suffices
+
+### The "No Sorry" Rule
+
+The rule against `sorry` applies to YOUR SUBMITTED PROOF, not to the theorems you invoke:
+- ✅ **OK**: Call theorems that exist in the file, even if they have `sorry`
+- ❌ **NOT OK**: Submit a proof for `{theorem_name}` that itself contains `sorry`
+
+### Tactics Reference
+
+#### Primary Automation (try these first!)
+- `grind` — Modern automation, try first for many goals
+- `simp_all` — Simplification with all hypotheses
+- `aesop` — Proof search
+
+#### Arithmetic & Numeric
+- `omega` — Linear arithmetic over ℕ/ℤ
+- `linarith` / `nlinarith` — Linear/nonlinear inequalities
+- `norm_num` — Numeric normalization
+- `ring` — Ring equations
+- `field_simp` — **Use BEFORE `ring`** for goals with division
+
+#### Structure
+- `intro` — Introduce hypotheses
+- `apply` / `exact` — Apply lemmas
+- `have` / `obtain` — Introduce intermediate facts
+- `cases` / `rcases` — Case analysis
+- `induction` — Inductive proofs
+- `ext` — Extensionality
+- `use` — Provide existential witness
+
+### If You Can't Prove It Directly
+
+**Before giving up, try hard:**
+- Is there a simpler approach?
+- Are you missing a key lemma? (search for it)
+- Is the statement wrong? (can you find a counterexample?)
+
+### Making Progress When Stuck
+
+When you understand the proof approach but can't complete it, you have two complementary ways to contribute:
+
+#### 1. Document Your Analysis (in issues)
+
+Good documentation helps future provers. Update or create an issue with:
+- **Natural language proof sketch**: How should the proof proceed?
+- **Key insights**: What's the main idea or trick?
+- **What's missing**: Definitions, helper lemmas, proof infrastructure, bridges to Mathlib or other parts of the proalsoject
+- **Source references**: Where in the tex is the proof strategy?
+
+#### 2. Formalize What You Can (in code)
+
+If you know what lemmas are needed, **state them directly in Lean**:
+
+```lean
+/-- Helper for foo_main: <what this establishes> -/
+lemma foo_helper (h : ...) : ... := sorry
+
+/-- Main theorem, assuming helper -/
+theorem foo_main : ... := by
+  have h := foo_helper ...
+  exact ...  -- complete this part if possible
+```
+
+This is valuable because:
+- Lemma statements are precise (Lean checks the types)
+- Other provers can work on the helpers immediately
+- You've made the proof structure explicit
+
+**Both approaches work together**: document the big picture in issues, formalize the concrete steps in code.
+
+### FIX vs ISSUE vs BLOCKED
+
+**Use FIX** when you can commit useful code changes:
+- Helper lemma statements (with `sorry`)
+- Definitions needed for the proof
+- Restructuring for correct dependencies
+- Fixed statements
+
+**Use ISSUE** when you can only contribute documentation:
+- Created an issue file with analysis and proof strategy
+- No code changes were possible/useful
+
+**Use BLOCKED only when:**
+- The theorem is `[cited]` or `[exercise]`
+- You truly cannot contribute anything (very rare)
+
+### Output for Success
+
+When done, commit your changes and output:
+```
+-- DONE
+Proved `{theorem_name}`.
+
+Approach: <brief proof strategy>
+Key lemmas: <important lemmas used>
+
+Closes #N (if resolving an issue)
+```
+
+### Output for FIX (when you made code progress)
+
+```
+-- FIX
+Made progress on `{theorem_name}`.
+
+## What I did
+<Helper lemmas added, restructuring, etc.>
+
+## Proof approach
+<How the proof should proceed>
+
+## What's still needed
+<Remaining blockers or missing pieces>
+
+Original task still TODO: prove `{theorem_name}` (or remaining helpers)
+```
+
+### Output for ISSUE
+
+If you can ONLY create an issue (no code changes possible):
+```
+-- ISSUE
+Created issue #N: <title>
+
+Blocking: proof of `{theorem_name}`
+Needed: <specific lemmas/definitions>
+Source: <where to find the math>
+Proof approach: <what you figured out>
+```
+
+### Output for BLOCKED (LAST RESORT)
+
+Only use when the theorem is `[cited]`/`[exercise]` or truly nothing can be done:
+```
+-- BLOCKED
+<Reason why you cannot proceed>
+```
+"""
+
+MAINTAIN_MODE_PROMPT = """## Mode: MAINTAIN
+
+Your task is to make progress on issue {issue_id}.
+
+This issue was assigned to you by the coordinator (each agent gets one issue to avoid duplicate work).
+
+### Your Job
+
+1. Use `file_list(path="issues")` to see all issues, then `file_read` to read them in detail
+2. Read the specific issue: `file_read(path="issues/{issue_id}.yaml")`
+3. **Check if the issue is already resolved** in the current codebase:
+   - If the issue describes something that is already fixed/done (e.g., theorem already exists, dependency already resolved), **just mark it as closed and return** — no code changes needed
+   - Use `lean_check`, `file_read`, or `search` tools to verify the current state
+4. If work is needed, make **progress** — whatever moves things forward:
+   - Sketch helper lemmas with `sorry` stubs
+   - Prove small theorems
+   - Add API lemmas (`@[simp]`, `_iff_`, basic properties)
+   - Refactor code (fix ordering, extract helpers)
+   - Fix incorrect statements
+   - Fix `[cited]`/`[exercise]` markers (add missing ones, remove incorrect ones)
+5. Commit your changes
+
+### Closing Issues
+
+Mark an issue as closed when:
+- **You fixed it** with code changes in this PR, OR
+- **It was already resolved** (the problem no longer exists in the codebase)
+
+To close:
+1. Edit `issues/{issue_id}.yaml`: change `status: open` to `status: closed`
+2. Include `Closes {issue_id}` in your output description
+3. If the issue was already resolved (no code changes needed), explain why in the closure note
+
+Note: If an issue flags a missing equivalence theorem or undocumented definition choice, resolve by proving the equivalence and adding docstrings.
+
+### Output
+
+```
+-- DONE
+<What you did and why>
+
+Closes {issue_id}
+```
+"""
+
+SCAN_MODE_PROMPT = """## Mode: SCAN
+
+Your task is to scan the codebase for issues and create them in the `issues/` folder.
+
+### Input
+- None (you decide what to focus on)
+
+### What to Look For
+
+Scan for any of these issue types, prioritizing what seems most impactful:
+
+- **Placeholder definitions or theorem statements**: Definitions or theorem statements that are obviously incomplete, incorrect, or use placeholder logic (e.g., `def foo := 0`, `theorem bar : True := trivial`, trivial stubs that don't match the intended semantics). These are high-priority because downstream theorems building on flawed foundations may be provable but meaningless.
+- **API gaps**: Definitions missing basic API lemmas (@[simp], _iff_, _eq_, _zero, _one, etc.)
+- **Forward dependencies**: Things used before they're defined (causes compilation issues)
+- **Missing @[simp] lemmas**: Lemmas that should be marked @[simp] but aren't
+- **Import cleanup**: Unused or overly broad imports
+- **Naming issues**: Lemmas that don't follow Mathlib naming conventions
+- **Missing coercions**: Places where explicit coercions could be instances
+- **Duplicate code**: Similar lemmas that could be unified
+- **Documentation drift**: `CONTENTS.md` is out of date with the actual file structure (missing entries for new Lean files, stale entries for renamed/deleted files, wrong module paths). Create an issue describing what needs updating.
+
+### Rabbit Holes (HIGH PRIORITY — DELETE)
+
+Look explicitly for **rabbit holes** - infrastructure that agents built that isn't needed by any target theorem. These are wasted effort that should be deleted:
+
+- **Unused parallel approaches**: Infrastructure for solving a problem that's already solved another way. Example: building matrix-tree theorem machinery when no target asks for it, or building `foo_involutive` when targets use `fooPrefix_involutive` instead.
+- **Redundant formalizations**: A theorem or classification that's already proved elsewhere. Example: building classification lemmas in `Auxiliary.lean` when the canonical targets are already PROVED in `Main.lean`.
+- **Dead-end infrastructure**: Lemmas/defs built toward an approach that was abandoned or superseded. Check if any target theorem actually uses this infrastructure.
+- **Structural duplicates**: Mathematical content proved via one abstraction (e.g., `FooEquiv`) but also partially built via another (`FooIso`) that nothing uses.
+
+**Detection strategy:**
+- Look at target theorems (the actual goals) and trace what infrastructure they need
+- Find infrastructure (especially clusters of `sorry`s) that NO target depends on
+
+**When flagging rabbit holes:**
+1. Identify the rabbit hole cluster (list all related defs/lemmas)
+2. Verify NO target theorem depends on this infrastructure
+3. Note what the infrastructure was TRYING to accomplish
+4. Note what ALREADY accomplishes this goal (the working approach)
+5. Recommend DELETION, not fixing — this is wasted effort
+
+### Refactoring Opportunities (HIGH PRIORITY)
+
+Look explicitly for **refactoring opportunities** — patterns where the codebase has evolved organically and now contains redundancy or inconsistency that should be unified:
+
+- **Duplicate machinery**: The same functionality implemented multiple times across different files (e.g., two different sum-over-divisors helpers, multiple ways to iterate over permutations). Flag when N≥2 implementations exist and suggest unifying into one canonical version.
+- **Convention clashes**: Different parts of the codebase follow incompatible conventions (e.g., one module uses 0-based indexing while another uses 1-based, or one file parameterizes over `Finset` while another uses `List`). These prevent code reuse. Flag the clash and suggest either:
+  - Standardizing on one convention, or
+  - Creating a bridge/adapter that translates between conventions
+- **Copy-paste patterns**: Near-identical proof structures repeated across files — suggests extracting a shared tactic or lemma.
+- **Missed generalizations**: A lemma proved for a specific type (e.g., `ℕ`) that could easily generalize (e.g., to a `Semiring`) to enable more reuse.
+- **Fragmented API**: Related lemmas scattered across multiple files instead of being co-located, making discovery difficult.
+- **Parallel hierarchies**: Two similar but separate type/class hierarchies that should be merged or related via instances.
+
+**When flagging refactoring issues:**
+1. Read files extensively and in depth — don't just grep, understand the full context of each instance
+2. List ALL instances of the duplicated/inconsistent pattern
+3. Suggest a concrete unification strategy
+4. Note any files that would need to change
+
+**Note on definitions**: An equivalent formulation as the primary definition is valid if the equivalence is proved and documented. A scan MAY flag: missing equivalence theorems, undocumented definition discrepancies from source, or missing docstrings noting which formulation was chosen.
+
+**Handling placeholder/flawed definitions**:
+When you identify a placeholder or incorrect definition/theorem statement:
+1. Mark the issue as **CRITICAL** in the issue description
+2. **List all dependent theorems** that build on this flawed foundation (use grep for usages)
+3. Note that once the definition is fixed, dependent proofs will likely break and need to be:
+   - **Reproved** with the corrected definition, OR
+   - **Temporarily reverted to sorry** with follow-up TODO issues created for reproving them
+4. Example issue format:
+   ```
+   CRITICAL: Placeholder definition `fooBar` is trivially defined as `0` but should compute X.
+
+   Dependent theorems that will likely need reproving:
+   - `fooBar_add` (in FooBar/Basic.lean)
+   - `fooBar_mul_comm` (in FooBar/Basic.lean)
+
+   Action: Fix the definition. Dependent proofs that no longer work should be temporarily replaced with `sorry` and tracked as separate TODO issues.
+   ```
+
+### Rules for `-- [cited]` and `-- [exercise]` Markers
+
+These markers on `sorry` stubs tell the system to skip proof attempts:
+
+- `sorry -- [cited]`: External citation — the source does NOT provide a proof. Only valid if no tex file for the cited source is available in `tex/`.
+- `sorry -- [exercise]`: Exercise without solution, or result "left to the reader". NOT valid if the exercise has a solution in the source.
+- Plain `sorry`: Proof is available in the source — will be sent to provers.
+
+**What to flag:**
+- Misuse: A theorem marked `-- [cited]` whose proof IS given in the source material
+- Misuse: A theorem marked `-- [exercise]` whose solution IS given in the source material
+- Missing marker: An external citation left as plain `sorry` without `-- [cited]`
+- Missing marker: An exercise without solution left as plain `sorry` without `-- [exercise]`
+
+**What NOT to flag:**
+- A correctly marked `-- [cited]` or `-- [exercise]` theorem with `sorry` is not an issue
+
+Use your judgment on what's most valuable to flag. Focus on high-impact, actionable items.
+
+### Your Job
+
+1. Use `file_list(path="issues")` to see existing issues, then `file_read` to check for duplicates
+2. Scan the Lean files for issues (you choose which patterns to prioritize)
+3. For each problem found:
+   - **Check for duplicates first** — search existing issues for similar descriptions
+   - If not duplicate, create a new issue: `create_issue(description="...", origin="scan")`
+4. Commit any changes you made (e.g., if you edited files)
+5. Output the completion marker
+
+**You can create multiple issues in one run.** Group related findings efficiently.
+
+### Issue Quality Standards
+
+Each issue MUST be:
+
+1. **Actionable**: Clear what someone needs to do
+   - Good: "Add `@[simp] lemma foo_zero : foo 0 = 0`"
+   - Bad: "The API is incomplete"
+
+2. **Fine-grained**: One specific thing per issue
+   - Good: Three separate issues for three missing lemmas
+   - Bad: One issue saying "add all the missing API"
+
+3. **Specific**: Names the exact definitions/theorems involved
+   - Good: "Add `pentagonalNumber_pos` lemma for `pentagonalNumber`"
+   - Bad: "Some function needs more lemmas"
+
+4. **Located**: Says where the change should happen using **semantic anchors**
+   - Good: "[ac-pentagonal-number] Add `signPow_mul` after `signPow_add`"
+   - Bad: "Add something somewhere"
+   - **NEVER use line numbers** (e.g., "line 532") — they become stale as files change. Use theorem/definition/lemma names as anchors.
+
+**It's fine to find no new issues** — a clean scan is a good result.
+
+### Output
+
+```
+-- DONE
+Scanned codebase for issues.
+
+Issues created: <list issue IDs> (or "none found")
+Categories: <what you focused on>
+```
+"""
+
+TRIAGE_MODE_PROMPT = """## Mode: TRIAGE
+
+Your task is to detect issues that have been resolved by recent work and close them.
+
+### Input
+- None (you check all open issues)
+
+### Your Job
+
+1. Use `list_issues()` to see all open issues, then `file_read` for full details
+2. For each open issue, check if the work described has been completed in the codebase
+3. If an issue is resolved:
+   - Edit the issue file: change `status: open` to `status: closed`
+   - Add a note: `(resolved: <what resolved it>)`
+4. Commit your changes
+
+### Issue Statuses
+
+Issues have a `status` field that can be:
+- `open`: Work is still needed
+- `closed`: The work is done (set this when you confirm the issue is resolved)
+
+### Important
+
+- Verify the work was **actually done** before closing
+- Don't close issues that are only **partially** resolved
+- The contributor who did the work may not have known about the issue - check anyway
+- Add a brief note explaining what resolved it
+- **Context on definitions**: Using an equivalent formulation is valid if the equivalence is proved and documented. If the issue flagged a missing equivalence theorem and it's now proved, the issue is resolved.
+
+### Output
+
+```
+-- DONE
+Triaged open issues.
+
+Closed: <issue_id> (resolved by <what>), <issue_id> (resolved by <what>)
+Still open: <count>
+```
+
+If nothing to close:
+```
+-- DONE
+Triaged open issues - none resolved yet.
+
+Still open: <count>
+```
+"""
+
+PROGRESS_MODE_PROMPT = """## Mode: PROGRESS
+
+Your task is to assess progress toward proving target theorems and identify blockers.
+
+### Overall Goal
+
+The ultimate goal of this project is to **prove all target theorems** listed in `manifest.json`. Each chapter in the manifest has a `target_theorems` field listing the theorems that must be proved for that chapter to be considered complete.
+
+### Input
+- None (you check the manifest and codebase)
+
+### Your Job
+
+**Important: Don't try to check ALL target theorems in one run.** Pick a few (2-5) target theorems to analyze in depth, then update the documentation with your findings.
+
+1. **Read the manifest**: Use `file_read` on `manifest.json` to get the list of target theorems.
+
+2. **Check existing progress documentation**: Read `CONTENTS.md` to see what's already been analyzed.
+
+3. **Pick a few target theorems to analyze** (2-5):
+   - Pick theorems that are not proved or have not been analyzed yet.
+
+4. **For each selected theorem, do a deep analysis**:
+   - Find the theorem in the Lean files
+   - Determine its status (see Status Categories below)
+   - If not proved, trace the dependency chain to find **root blockers**
+
+5. **Identify blockers**:
+   - What is the status? What should the next step be? What is preventing progress?
+
+6. **Create issues for critical blockers**:
+   - If you identify blockers that don't have issues yet, create them: `create_issue(description="...", origin="progress")`
+   - Focus on blockers that unblock target theorems
+
+7. **Update CONTENTS.md with your findings**:
+   - Add or update a "Target Theorem Status" section
+   - Document the status of the theorems you analyzed, including their proof status and architecture
+   - Record blockers and what would unblock progress
+   - This keeps `CONTENTS.md` as a quick reference for the project status
+
+8. **Commit any changes** and output the completion marker
+
+### Status Categories
+
+Use these exact status labels when documenting target theorems:
+
+- **PROVED**: The theorem has a complete proof (no `sorry` anywhere in the proof)
+- **SORRY**: The theorem itself has `sorry` — no proof at all yet
+- **DEPS SORRY**: The theorem is proved, but depends on other theorems/helpers that still have `sorry`
+- **CITED**: Marked with `-- [cited]` — external citation, source does NOT provide a proof
+- **EXERCISE**: Marked with `-- [exercise]` — exercise without solution in the source
+
+**Notes:**
+- CITED and EXERCISE are NOT proof targets — they don't need to be proved
+- Only SORRY theorems need direct proof work
+- DEPS SORRY theorems are "done" but their dependencies need work first
+- If a target theorem has a misapplied marker (e.g., marked `[cited]` but proof IS in source), flag this as an issue
+
+### Output
+
+```
+-- DONE
+Progress check complete.
+
+Theorems analyzed this run:
+- <theorem_1>: PROVED / SORRY / DEPS SORRY (depends on X, Y) / CITED / EXERCISE
+- <theorem_2>: PROVED / SORRY / DEPS SORRY (depends on X, Y) / CITED / EXERCISE
+...
+
+Blockers identified:
+1. <blocker>: blocks <list of target theorems affected>
+2. <blocker>: blocks <list of target theorems affected>
+...
+
+Issues created: <list issue IDs> (or "none needed")
+CONTENTS.md update summary: <what you added/changed>
+```
+"""
+
+
+# =============================================================================
+# ContributorAgent Implementation
+# =============================================================================
+
+
+class ContributorAgent(
+    FileToolsMixin, GitWorktreeToolsMixin, LeanToolsMixin, MathlibToolsMixin, ShellToolsMixin, BaseAgent
+):
+    """
+    Unified contributor agent that handles sketching, proving, and maintenance.
+
+    Same tools, same result flow, different prompts based on mode.
+    """
+
+    agent_type = "contributor"
+
+    def __init__(
+        self,
+        *args,
+        task: ContributorTask,
+        revision_context: str | None = None,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        self.task = task
+        self.revision_context = revision_context
+
+    def get_system_prompt(self) -> str:
+        """Select system prompt based on mode."""
+        base = CONTRIBUTOR_BASE_PROMPT
+        mode_specific = self._get_mode_prompt()
+        learnings_context = self.learnings.to_prompt_context()
+        return base + "\n\n" + mode_specific + f"\n\n## Learnings from Previous Work\n\n{learnings_context}"
+
+    def _get_mode_prompt(self) -> str:
+        """Get the mode-specific prompt with task parameters filled in."""
+        if self.task.mode == ContributorMode.SKETCH:
+            return SKETCH_MODE_PROMPT.format(
+                chapter_id=self.task.chapter_id or "",
+                source_tex_path=self.task.source_tex_path or "",
+                lean_path=self.task.lean_path or "",
+            )
+        elif self.task.mode == ContributorMode.PROVE:
+            return PROVE_MODE_PROMPT.format(
+                chapter_id=self.task.chapter_id or "",
+                theorem_name=self.task.theorem_name or "",
+                lean_path=self.task.lean_path or "",
+                source_tex_path=self.task.source_tex_path or "",
+            )
+        elif self.task.mode == ContributorMode.MAINTAIN:
+            issue_str = str(self.task.issue_id) if self.task.issue_id else "none"
+            return MAINTAIN_MODE_PROMPT.format(issue_id=issue_str)
+        elif self.task.mode == ContributorMode.SCAN:
+            return SCAN_MODE_PROMPT
+        elif self.task.mode == ContributorMode.TRIAGE:
+            return TRIAGE_MODE_PROMPT
+        elif self.task.mode == ContributorMode.PROGRESS:
+            return PROGRESS_MODE_PROMPT
+        else:
+            return ""
+
+    def should_stop(self, text: str) -> bool:
+        """Stop when task is complete based on output markers."""
+        return "-- DONE" in text or "-- FIX" in text or "-- ISSUE" in text or "-- BLOCKED" in text
+
+    def build_user_prompt(self, **kwargs) -> str:
+        """Build the initial prompt based on mode and task."""
+        parts = []
+
+        # Add revision context if this is a revision
+        if self.revision_context:
+            parts.append("## Revision Requested")
+            parts.append("")
+            parts.append("**IMPORTANT:** You are working on the same branch as your previous attempt.")
+            parts.append("Your previous work is already committed here. To see what you've done:")
+            parts.append('- Run `bash(command="git log main..HEAD --oneline")` to see your commits since branching')
+            parts.append('- Run `bash(command="git diff main..HEAD")` to see your full diff against main')
+            parts.append("- Run `git_status()` to check for any uncommitted changes")
+            parts.append("")
+            parts.append("Review and fix your existing work rather than starting over.")
+            parts.append("")
+            parts.append("The reviewer requested changes to your previous submission:")
+            parts.append(self.revision_context)
+            parts.append("")
+            parts.append("Please address the feedback above and resubmit.")
+            parts.append("")
+
+        # Mode-specific initial instructions
+        if self.task.mode == ContributorMode.SKETCH:
+            parts.extend(self._build_sketch_prompt(**kwargs))
+        elif self.task.mode == ContributorMode.PROVE:
+            parts.extend(self._build_prove_prompt(**kwargs))
+        elif self.task.mode == ContributorMode.MAINTAIN:
+            parts.extend(self._build_maintain_prompt(**kwargs))
+        elif self.task.mode == ContributorMode.SCAN:
+            parts.extend(self._build_scan_prompt(**kwargs))
+        elif self.task.mode == ContributorMode.TRIAGE:
+            parts.extend(self._build_triage_prompt(**kwargs))
+        elif self.task.mode == ContributorMode.PROGRESS:
+            parts.extend(self._build_progress_prompt(**kwargs))
+
+        return "\n".join(parts)
+
+    def _build_sketch_prompt(self, **kwargs) -> list[str]:
+        """Build user prompt for sketch mode."""
+        is_initial = kwargs.get("is_initial", True)
+        feedback = kwargs.get("feedback")
+        escalations = kwargs.get("escalations")
+
+        parts = []
+
+        parts.append("## Chapter")
+        parts.append(f"- Source (tex): `{self.task.source_tex_path}`")
+        parts.append("")
+
+        if feedback:
+            parts.append("## Reviewer Feedback")
+            parts.append(feedback)
+            parts.append("")
+            if "Merge conflict" in feedback:
+                parts.append("## Resolving Merge Conflicts")
+                parts.append("Your branch has diverged from main. Run `git_rebase()` first,")
+                parts.append(
+                    "then resolve any conflicts with `git_conflicts()`, `git_add()`, and `git_rebase_continue()`."
+                )
+                parts.append("")
+            if escalations:
+                parts.append("## Prover Escalations")
+                parts.append(f"Some issues came up while proving {len(escalations)} theorem(s):")
+                for thm_name, msg in escalations:
+                    parts.append(f"\n### `{thm_name}`")
+                    parts.append(msg)
+                parts.append("")
+
+        parts.append("## Task")
+        if is_initial:
+            parts.append("Create a Lean 4 formalization of the source material.\n")
+            parts.append(f'1. Read the source tex file with `file_read(path="{self.task.source_tex_path}")`')
+            parts.append(
+                "2. Check `CONTENTS.md` to understand the project structure and decide where to place your Lean file"
+            )
+            parts.append("3. Create the Lean file with `file_write` in the appropriate location")
+            parts.append(
+                '4. Build with `bash(command="lake build <ModuleName>")` to verify (module name = path with `/` → `.` and no `.lean`)'
+            )
+            parts.append("5. Fix any errors with `file_edit` or `file_edit_lines`")
+            parts.append("6. Commit your changes with `git_add` and `git_commit`")
+        else:
+            parts.append("**IMPORTANT:** You are working on the same branch as your previous attempt.")
+            parts.append("Your previous commits are already here. To see what you've done:")
+            parts.append('- Run `bash(command="git log main..HEAD --oneline")` to see your commits since branching')
+            parts.append('- Run `bash(command="git diff main..HEAD")` to see your full diff against main')
+            parts.append("- Run `git_status()` to check for any uncommitted changes")
+            parts.append("")
+            parts.append("Review and fix your existing work rather than starting over.")
+            parts.append("")
+            parts.append("Update the Lean file to address the feedback/escalation.\n")
+            parts.append("1. Check `CONTENTS.md` to find which Lean file(s) cover this chapter")
+            parts.append('2. Use `file_grep(path="<lean_file>", pattern="...")` to find relevant code')
+            parts.append("3. Use `file_read` with offset/limit to see exact context")
+            parts.append("4. Use `file_edit` or `file_edit_lines` for minimal changes")
+            parts.append('5. Build with `bash(command="lake build <ModuleName>")` to verify')
+            parts.append("6. Commit your changes with `git_add` and `git_commit`")
+
+        return parts
+
+    def _build_prove_prompt(self, **kwargs) -> list[str]:
+        """Build user prompt for prove mode."""
+        previous_attempts = kwargs.get("previous_attempts", [])
+        hints = kwargs.get("hints")
+
+        parts = []
+
+        parts.append("## Target")
+        parts.append(f"Prove theorem: `{self.task.theorem_name}`")
+        parts.append(f"- Chapter: `{self.task.chapter_id}`")
+        if self.task.source_tex_path:
+            parts.append(f"- Source tex: `{self.task.source_tex_path}` (for proof hints)")
+        parts.append("")
+
+        if previous_attempts:
+            parts.append("## Previous Attempts")
+            parts.append(f"You have attempted this theorem {len(previous_attempts)} time(s) before.")
+            for i, attempt in enumerate(previous_attempts[-3:], 1):
+                parts.append(f"\n### Attempt {i}")
+                parts.append(attempt[:1000])
+            parts.append("\nTry a different approach.\n")
+
+        if hints:
+            parts.append("## Hints")
+            parts.append(hints)
+            parts.append("")
+
+        parts.append("## Instructions")
+        parts.append(
+            "1. Read `CONTENTS.md` for proof architecture, status, strategy notes, and chapter structure\n"
+            "2. Check `CONTENTS.md` to find the Lean file(s) for this chapter\n"
+            f'3. Find `{self.task.theorem_name}` with `file_grep(path="<lean_file>", pattern="{self.task.theorem_name}")`\n'
+            "4. Study available lemmas that appear BEFORE your target\n"
+            "5. Check the source tex for proof strategy if available\n"
+            "6. Develop and verify your proof with `lean_check`\n"
+            "7. Use `file_edit` to replace the sorry with your proof\n"
+            "8. Commit your changes with `git_add` and `git_commit`"
+        )
+
+        return parts
+
+    def _build_maintain_prompt(self, **kwargs) -> list[str]:
+        """Build user prompt for maintain mode."""
+        feedback = kwargs.get("feedback")
+        parts = []
+
+        if feedback:
+            parts.append("## Reviewer Feedback")
+            parts.append("")
+            parts.append("**IMPORTANT:** You are working on the same branch as your previous attempt.")
+            parts.append("Your previous commits are already here. To see what you've done:")
+            parts.append('- Run `bash(command="git log main..HEAD --oneline")` to see your commits since branching')
+            parts.append('- Run `bash(command="git diff main..HEAD")` to see your full diff against main')
+            parts.append("- Run `git_status()` to check for any uncommitted changes")
+            parts.append("")
+            parts.append("Review and fix your existing work rather than starting over.")
+            parts.append("")
+            parts.append("Your previous submission was rejected. Please address this feedback:")
+            parts.append(feedback)
+            parts.append("")
+            # If feedback mentions merge conflict, add rebase instructions
+            if "Merge conflict" in feedback:
+                parts.append("## Resolving Merge Conflicts")
+                parts.append("Your branch has diverged from main. To fix this:")
+                parts.append("1. Run `git_rebase()` to rebase your branch onto main")
+                parts.append("2. If conflicts occur, use `git_conflicts()` to find conflict markers")
+                parts.append("3. Edit conflicted files to resolve (remove `<<<<<<<`, `=======`, `>>>>>>>` markers)")
+                parts.append("4. Stage resolved files with `git_add(paths=[...])`")
+                parts.append("5. Continue with `git_rebase_continue()`")
+                parts.append(
+                    "6. If you can't resolve, use `git_rebase_abort()` and redo your work on the updated files"
+                )
+                parts.append("")
+
+        parts.append("## Task")
+        if self.task.issue_id:
+            parts.append(f"Work on issue {self.task.issue_id}.")
+        else:
+            parts.append("Pick an open issue from the `issues/` folder and make progress on it.")
+        parts.append("")
+
+        parts.append("## Steps")
+        parts.append("1. Read `CONTENTS.md` for proof architecture, status and chapter structure")
+        parts.append("2. Use `list_issues()` to see all open issues, then `file_read` for details")
+        if self.task.issue_id:
+            parts.append(f'3. Read issue {self.task.issue_id}: `file_read(path="issues/{self.task.issue_id}.yaml")`')
+        else:
+            parts.append("3. Pick an open issue (where `status: open`) you can make progress on")
+        parts.append("4. Do the work (add lemmas, fix statements, etc.)")
+        parts.append(
+            "5. If your work resolves an issue, edit its .yaml file: change `status: open` to `status: closed`"
+        )
+        parts.append("6. Commit your changes with `git_add` and `git_commit`")
+
+        return parts
+
+    def _build_scan_prompt(self, **kwargs) -> list[str]:
+        """Build user prompt for scan mode."""
+        feedback = kwargs.get("feedback")
+        lean_paths = kwargs.get("lean_paths", [])
+
+        parts = []
+
+        if feedback:
+            parts.append("## Reviewer Feedback")
+            parts.append("Your previous submission was rejected. Please address this feedback:")
+            parts.append(feedback)
+            parts.append("")
+            if "Merge conflict" in feedback:
+                parts.append("## Resolving Merge Conflicts")
+                parts.append("Your branch has diverged from main. Run `git_rebase()` first,")
+                parts.append(
+                    "then resolve any conflicts with `git_conflicts()`, `git_add()`, and `git_rebase_continue()`."
+                )
+                parts.append("")
+
+        parts.append("## Task")
+        parts.append("Scan the codebase for issues and create them in the `issues/` folder.")
+        parts.append("")
+
+        if lean_paths:
+            parts.append("## Files to Scan")
+            for path in lean_paths:
+                parts.append(f"- `{path}`")
+            parts.append("")
+
+        parts.append("## Steps")
+        parts.append('1. Use `list_issues(status="all")` to check for duplicate issues before creating new ones')
+        parts.append("2. Scan Lean files for issues — prioritize **refactoring opportunities**:")
+        parts.append("   - Duplicate machinery (same logic implemented multiple times)")
+        parts.append("   - Convention clashes preventing code reuse")
+        parts.append("   - Copy-paste patterns that should be extracted")
+        parts.append("   - Missed generalizations (specific type → general typeclass)")
+        parts.append("3. Also look for: API gaps, forward deps, naming issues, etc.")
+        parts.append('4. Create new issues with `create_issue(description="...", origin="scan")`')
+        parts.append("5. Commit any file changes with `git_add` and `git_commit`")
+
+        return parts
+
+    def _build_triage_prompt(self, **kwargs) -> list[str]:
+        """Build user prompt for triage mode."""
+        feedback = kwargs.get("feedback")
+        parts = []
+
+        if feedback:
+            parts.append("## Reviewer Feedback")
+            parts.append("Your previous submission was rejected. Please address this feedback:")
+            parts.append(feedback)
+            parts.append("")
+            if "Merge conflict" in feedback:
+                parts.append("## Resolving Merge Conflicts")
+                parts.append("Your branch has diverged from main. Run `git_rebase()` first,")
+                parts.append(
+                    "then resolve any conflicts with `git_conflicts()`, `git_add()`, and `git_rebase_continue()`."
+                )
+                parts.append("")
+
+        parts.append("## Task")
+        parts.append("Triage issues in `issues/` folder: close resolved ones, and restructure others for clarity.")
+        parts.append("")
+
+        parts.append("## Steps")
+        parts.append("1. Use `list_issues()` to see all open issues, then `file_read` for details")
+        parts.append("2. For each open issue (where `status: open`):")
+        parts.append("   - If resolved: edit the .yaml file, change `status: open` to `status: closed`")
+        parts.append("   - If too large: split into smaller self-contained issues (see below)")
+        parts.append("3. If you made changes, commit with `git_add` and `git_commit`")
+        parts.append("")
+
+        parts.append("## Issue Restructuring")
+        parts.append("Issues should be self-contained todo items that can be tackled independently.")
+        parts.append("Split large issues when:")
+        parts.append("- An issue lists multiple items to work on (e.g., 'do A, B, C, D, E')")
+        parts.append("- An issue has many substeps that can be worked upon independently")
+        parts.append("- Different parts of the issue can be worked on in parallel")
+        parts.append("")
+        parts.append("When splitting:")
+        parts.append("- Create new issue files for each independent piece")
+        parts.append("- Reference the original issue in each new issue's description")
+        parts.append("- Close the original issue with a note that it was split")
+        parts.append("")
+
+        parts.append("## Proof Status and Architecture Documentation")
+        parts.append(
+            "If an issue contains **general proof status and architecture notes** (todos, overall strategy, key insights,"
+        )
+        parts.append("design decisions for the thereom/chapter in question), move this content to `CONTENTS.md`:")
+        parts.append("- Add a new section or subsection in `CONTENTS.md` with the notes")
+        parts.append(
+            "- In the issue file(s), replace the status and architecture notes with a link: 'See CONTENTS.md#section-name'"
+        )
+        parts.append("- This keeps `CONTENTS.md` as the central reference for proof status and architecture")
+
+        return parts
+
+    def _build_progress_prompt(self, **kwargs) -> list[str]:
+        """Build user prompt for progress mode."""
+        feedback = kwargs.get("feedback")
+        parts = []
+
+        if feedback:
+            parts.append("## Reviewer Feedback")
+            parts.append("Your previous submission was rejected. Please address this feedback:")
+            parts.append(feedback)
+            parts.append("")
+            if "Merge conflict" in feedback:
+                parts.append("## Resolving Merge Conflicts")
+                parts.append("Your branch has diverged from main. Run `git_rebase()` first,")
+                parts.append(
+                    "then resolve any conflicts with `git_conflicts()`, `git_add()`, and `git_rebase_continue()`."
+                )
+                parts.append("")
+
+        parts.append("## Task")
+        parts.append("Assess progress toward proving target theorems and identify blockers.")
+        parts.append("")
+        parts.append("Follow the steps in **Your Job** section above.")
+
+        return parts
+
+    def run_task(self, **kwargs) -> ContributorResult:
+        """Run the contributor and return structured result.
+
+        This is the unified entry point that replaces run_sketch, run_prove, etc.
+        """
+        result = self.run(**kwargs)
+        dialog_text = dialog_to_text(result.dialog)
+
+        return self._parse_result(dialog_text, result)
+
+    def _parse_result(self, dialog_text: str, agent_result: Any) -> ContributorResult:
+        """Parse agent output to determine result status and extract description."""
+
+        def extract_description(text: str, marker: str) -> str:
+            """Extract everything after '-- MARKER' line as description."""
+            pattern = rf"-- {marker}\b[^\n]*\n(.*)"
+            match = re.search(pattern, text, re.DOTALL)
+            if match:
+                return match.group(1).strip()
+            return ""
+
+        # Check for DONE marker
+        if "-- DONE" in dialog_text:
+            description = extract_description(dialog_text, "DONE")
+            return ContributorResult(
+                task=self.task,
+                status="done",
+                description=description,
+                learnings=agent_result.learnings,
+                run=agent_result.run,
+            )
+
+        # Check for legacy SKETCH COMPLETE
+        if "-- SKETCH COMPLETE" in dialog_text:
+            return ContributorResult(
+                task=self.task,
+                status="done",
+                learnings=agent_result.learnings,
+                run=agent_result.run,
+            )
+
+        # Check for legacy TICKER COMPLETE
+        if "-- TICKER COMPLETE" in dialog_text:
+            return ContributorResult(
+                task=self.task,
+                status="done",
+                learnings=agent_result.learnings,
+                run=agent_result.run,
+            )
+
+        # Check for legacy SCAN COMPLETE
+        if "-- SCAN COMPLETE" in dialog_text:
+            return ContributorResult(
+                task=self.task,
+                status="done",
+                learnings=agent_result.learnings,
+                run=agent_result.run,
+            )
+
+        # Check for MERGEABLE CODE (prover success) - content between delimiters
+        mergeable_match = re.search(
+            r"-- BEGIN MERGEABLE CODE\s*\n(.*?)-- END MERGEABLE CODE",
+            dialog_text,
+            re.DOTALL,
+        )
+        if mergeable_match:
+            mergeable_code = mergeable_match.group(1).strip()
+            # Validate the code
+            has_sorry, has_axiom = has_sorry_or_axiom(mergeable_code)
+            if has_sorry or has_axiom:
+                return ContributorResult(
+                    task=self.task,
+                    status="failure",
+                    error="Mergeable code contains sorry or axiom",
+                    learnings=agent_result.learnings,
+                    run=agent_result.run,
+                )
+            return ContributorResult(
+                task=self.task,
+                status="done",
+                mergeable_code=mergeable_code,
+                learnings=agent_result.learnings,
+                run=agent_result.run,
+            )
+
+        # Check for FIX marker
+        if "-- FIX" in dialog_text:
+            description = extract_description(dialog_text, "FIX")
+            return ContributorResult(
+                task=self.task,
+                status="fix",
+                fix_request=description,
+                description=description,
+                learnings=agent_result.learnings,
+                run=agent_result.run,
+            )
+
+        # Check for ISSUE marker
+        if "-- ISSUE" in dialog_text:
+            description = extract_description(dialog_text, "ISSUE")
+            return ContributorResult(
+                task=self.task,
+                status="issue",
+                issue_text=description,
+                description=description,
+                learnings=agent_result.learnings,
+                run=agent_result.run,
+            )
+
+        # Check for BLOCKED
+        if "-- BLOCKED" in dialog_text:
+            description = extract_description(dialog_text, "BLOCKED")
+            return ContributorResult(
+                task=self.task,
+                status="blocked",
+                error=description or "Blocked (no reason given)",
+                learnings=agent_result.learnings,
+                run=agent_result.run,
+            )
+
+        # No valid marker found
+        return ContributorResult(
+            task=self.task,
+            status="failure",
+            error="No valid output marker found",
+            learnings=agent_result.learnings,
+            run=agent_result.run,
+        )
+
+
+# =============================================================================
+# Backward Compatibility Wrappers
+# =============================================================================
+
+# These provide backward compatibility during transition from separate agents
+
+
+def run_sketch(
+    task: ContributorTask,
+    config: Any = None,
+    repo_root: Any = None,
+    worktree_manager: Any = None,
+    learnings: Any = None,
+    recorder: Any = None,
+    is_initial: bool = True,
+    feedback: str | None = None,
+    escalations: list[tuple[str, str]] | None = None,
+) -> ContributorResult:
+    """Backward-compatible wrapper for sketch mode."""
+    agent = ContributorAgent(
+        config=config,
+        repo_root=repo_root,
+        worktree_manager=worktree_manager,
+        learnings=learnings,
+        recorder=recorder,
+        task=task,
+    )
+    return agent.run_task(
+        is_initial=is_initial,
+        feedback=feedback,
+        escalations=escalations,
+    )
+
+
+def run_prove(
+    task: ContributorTask,
+    config: Any = None,
+    repo_root: Any = None,
+    worktree_manager: Any = None,
+    learnings: Any = None,
+    recorder: Any = None,
+    previous_attempts: list[str] | None = None,
+    hints: str | None = None,
+) -> ContributorResult:
+    """Backward-compatible wrapper for prove mode."""
+    agent = ContributorAgent(
+        config=config,
+        repo_root=repo_root,
+        worktree_manager=worktree_manager,
+        learnings=learnings,
+        recorder=recorder,
+        task=task,
+    )
+    return agent.run_task(
+        previous_attempts=previous_attempts or [],
+        hints=hints,
+    )

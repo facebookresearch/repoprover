@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "repoprover"
+version = "0.1.0"
+description = "Automatic textbook formalization"
+requires-python = ">=3.10"
+dependencies = [
+    "openai",
+    "fastapi",
+    "uvicorn",
+    "websockets",
+    "simple-parsing",
+    "pyyaml",
+    "pytest",
+]
+
+[project.optional-dependencies]
+analysis = [
+    "matplotlib",
+    "numpy",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

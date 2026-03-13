@@ -1,0 +1,663 @@
+{
+  "chapters": [
+    {
+      "id": "ac-notations-and-elementary-facts-examples",
+      "title": "Notations and elementary facts + Examples",
+      "source_path": "AlgebraicCombinatorics/tex/FPS/Notations.tex",
+      "target_theorems": [
+        "def.binom.binom",
+        "prop.binom.rec",
+        "prop.binom.0",
+        "thm.binom.sym"
+      ]
+    },
+    {
+      "id": "ac-definitions-preamble-reminder-commutativ",
+      "title": "Definitions: (preamble) ... Reminder: Commutative rings",
+      "source_path": "AlgebraicCombinatorics/tex/FPS/CommutativeRings.tex",
+      "target_theorems": [
+        "def.alg.commring",
+        "def.alg.module"
+      ]
+    },
+    {
+      "id": "ac-definitions-the-definition-of-formal-pow",
+      "title": "Definitions: The definition of formal power ... What next?",
+      "source_path": "AlgebraicCombinatorics/tex/FPS/FPSDefinition.tex",
+      "target_theorems": [
+        "def.fps.fps",
+        "def.fps.ops",
+        "thm.fps.ring",
+        "def.fps.coeff",
+        "def.infsum.essfin",
+        "def.fps.summable",
+        "prop.fps.summable.sub",
+        "prop.fps.summable-sums-rule",
+        "def.fps.x",
+        "lem.fps.xa",
+        "prop.fps.xk",
+        "cor.fps.sumakxk",
+        "prop.binom.vandermonde.NN",
+        "thm.binom.vandermonde.CC"
+      ]
+    },
+    {
+      "id": "ac-dividing-fpss",
+      "title": "Dividing FPSs",
+      "source_path": "AlgebraicCombinatorics/tex/FPS/DividingFPS.tex",
+      "target_theorems": [
+        "def.commring.inverse",
+        "thm.commring.inverse-uni",
+        "def.commring.fracs",
+        "prop.commring.fracs.1",
+        "prop.fps.invertible",
+        "cor.fps.invertible.field",
+        "prop.fps.invertible.1+x",
+        "thm.fps.newton-binom",
+        "thm.binom.upneg-n",
+        "prop.fps.anti-newton-binom",
+        "cor.fps.anti-newton-binom-2",
+        "def.fps.div-by-x",
+        "prop.fps.div-by-x-inverts",
+        "lem.fps.g=xh",
+        "lem.fps.first-n-coeffs-of-xna",
+        "lem.fps.muls-of-xn",
+        "lem.fps.prod.irlv.fg",
+        "lem.fps.prod.irlv.mul",
+        "lem.fps.prod.irlv.cong-mul"
+      ]
+    },
+    {
+      "id": "ac-polynomials",
+      "title": "Polynomials",
+      "source_path": "AlgebraicCombinatorics/tex/FPS/Polynomials.tex",
+      "target_theorems": [
+        "def.fps.pol",
+        "thm.fps.pol.ring",
+        "def.alg.ring",
+        "def.alg.Kalg",
+        "def.pol.subs",
+        "thm.pol.eval.a+b"
+      ]
+    },
+    {
+      "id": "ac-substitution-and-evaluation-of-power-ser",
+      "title": "Substitution and evaluation of power series",
+      "source_path": "AlgebraicCombinatorics/tex/FPS/Substitution.tex",
+      "target_theorems": [
+        "def.fps.subs",
+        "prop.fps.subs.wd",
+        "prop.fps.subs.rules",
+        "lem.fps.fg-coeffs-0",
+        "def.kron-delta"
+      ]
+    },
+    {
+      "id": "ac-derivatives-of-fpss",
+      "title": "Derivatives of FPSs",
+      "source_path": "AlgebraicCombinatorics/tex/FPS/Derivatives.tex",
+      "target_theorems": [
+        "def.fps.deriv",
+        "thm.fps.deriv.rules"
+      ]
+    },
+    {
+      "id": "ac-exponentials-and-logarithms",
+      "title": "Exponentials and logarithms",
+      "source_path": "AlgebraicCombinatorics/tex/FPS/ExpLog.tex",
+      "target_theorems": [
+        "def.fps.exp-log",
+        "prop.fps.exp-log-der",
+        "lem.fps.compos-cst-term-0",
+        "thm.fps.exp-log-inv",
+        "def.fps.Exp-Log-maps",
+        "lem.fps.Exp-Log-maps-wd",
+        "lem.fps.Exp-Log-maps-inv",
+        "lem.fps.Exp-Log-additive",
+        "prop.fps.Exp-Log-groups",
+        "thm.fps.Exp-Log-group-iso",
+        "def.fps.loder.1",
+        "prop.fps.loder.log",
+        "prop.fps.loder.prod",
+        "cor.fps.loder.prodk",
+        "cor.fps.loder.inv"
+      ]
+    },
+    {
+      "id": "ac-non-integer-powers",
+      "title": "Non-integer powers",
+      "source_path": "AlgebraicCombinatorics/tex/FPS/NonIntegerPowers.tex",
+      "target_theorems": [
+        "def.fps.power-c",
+        "thm.fps.power-c.rules",
+        "thm.fps.gen-newton",
+        "prop.binom.nCk-2i-qedmo.CN"
+      ]
+    },
+    {
+      "id": "ac-integer-compositions",
+      "title": "Integer compositions",
+      "source_path": "AlgebraicCombinatorics/tex/FPS/IntegerCompositions.tex",
+      "target_theorems": [
+        "def.fps.comps",
+        "thm.fps.comps.num-comps-n-k",
+        "thm.fps.comps.num-comps-n",
+        "def.fps.wcomps",
+        "thm.fps.comps.num-wcomps-n-k",
+        "thm.fps.comps.num-wpcomps-n-k",
+        "prop.fps.comps.num-w2comps-n-k-id"
+      ]
+    },
+    {
+      "id": "ac-x-n-equivalence",
+      "title": "x^{n}-equivalence",
+      "source_path": "AlgebraicCombinatorics/tex/FPS/XnEquivalence.tex",
+      "target_theorems": [
+        "def.fps.xneq",
+        "thm.fps.xneq.props",
+        "prop.fps.xneq-multiple",
+        "prop.fps.xneq.comp"
+      ]
+    },
+    {
+      "id": "ac-infinite-products-preamble-properties-of",
+      "title": "Infinite products: (preamble) ... Properties of infinite products",
+      "source_path": "AlgebraicCombinatorics/tex/FPS/InfiniteProducts1.tex",
+      "target_theorems": [
+        "def.fps.determines-xn-coeff",
+        "def.fps.xn-coeff-fin-determined",
+        "prop.fps.summable=fin-det",
+        "def.fps.multipliable",
+        "prop.fps.multipliable.prod-wd",
+        "prop.fps.multipliable.prod-wd2",
+        "lem.fps.prod.irlv.1",
+        "lem.fps.prod.irlv.fin",
+        "thm.fps.1+f-mulable",
+        "prop.fps.1-mulable",
+        "def.fps.infprod-approx",
+        "lem.fps.mulable.approx",
+        "prop.fps.infprod-approx-xneq",
+        "prop.fps.union-mulable",
+        "prop.fps.prod-mulable",
+        "prop.fps.div-mulable",
+        "prop.fps.prods-mulable-subfams",
+        "prop.fps.prods-mulable-rules.reindex",
+        "prop.fps.prods-mulable-rules.SW1",
+        "prop.fps.prods-mulable-rules.fubini1",
+        "prop.fps.prods-mulable-rules.fubini"
+      ]
+    },
+    {
+      "id": "ac-infinite-products-product-rules-generali",
+      "title": "Infinite products: Product rules (generalized distributive laws) ... Exponentials, logarithms and infinite products",
+      "source_path": "AlgebraicCombinatorics/tex/FPS/InfiniteProducts2.tex",
+      "target_theorems": [
+        "prop.fps.prodrule-fin-fin",
+        "prop.fps.prodrule-fin-inf",
+        "def.fps.prodrule.ess-fin",
+        "prop.fps.prodrule-inf-infN",
+        "prop.fps.prodrule-inf-inf",
+        "prop.fps.prodrule-fin-infJ",
+        "lem.fps.prod.irlv.inf",
+        "prop.gf.prod.euler-odd",
+        "thm.gf.prod.euler-comb",
+        "prop.fps.subs.rule-infprod",
+        "prop.fps.Exp-Log-infsum",
+        "prop.fps.Exp-Log-infprod"
+      ]
+    },
+    {
+      "id": "ac-the-generating-function-of-a-weighted",
+      "title": "The generating function of a weighted",
+      "source_path": "AlgebraicCombinatorics/tex/FPS/WeightedSets.tex",
+      "target_theorems": [
+        "def.gf-ws.weighted-sets",
+        "prop.gf-ws.iso",
+        "def.gf-ws.djun",
+        "prop.gf-ws.djun",
+        "def.gf-ws.prod",
+        "prop.gf-ws.prod",
+        "prop.gf-ws.pow",
+        "def.domino.shapes-and-tilings",
+        "lem.gf.weighted-set.domino.fd"
+      ]
+    },
+    {
+      "id": "ac-limits-of-fpss",
+      "title": "Limits of FPSs",
+      "source_path": "AlgebraicCombinatorics/tex/FPS/Limits.tex",
+      "target_theorems": [
+        "def.fps.lim.stab",
+        "def.fps.lim.coeff-stab",
+        "thm.fps.lim.lim-crit",
+        "lem.fps.lim.xn-equiv",
+        "prop.fps.lim.sum-prod",
+        "cor.fps.lim.sum-prod-k",
+        "prop.fps.lim.sum-quot",
+        "prop.fps.lim.comp",
+        "prop.fps.lim.deriv-lim",
+        "thm.fps.lim.sum-lim",
+        "thm.fps.lim.prod-lim",
+        "cor.fps.lim.fps-as-pol",
+        "thm.fps.lim.sum-lim-conv",
+        "thm.fps.lim.prod-lim-conv"
+      ]
+    },
+    {
+      "id": "ac-laurent-power-series",
+      "title": "Laurent power series",
+      "source_path": "AlgebraicCombinatorics/tex/FPS/LaurentSeries.tex",
+      "target_theorems": [
+        "thm.fps.laure.binary-rep-uniq",
+        "thm.fps.laure.balanced-tern-rep-uniq",
+        "def.fps.laure.double",
+        "def.fps.laure.laupol",
+        "thm.fps.laure.laupol-ring",
+        "prop.fps.laure.a=sumaixi",
+        "def.fps.laure.lauser",
+        "thm.fps.laure.lauser-ring"
+      ]
+    },
+    {
+      "id": "ac-multivariate-fpss",
+      "title": "Multivariate FPSs",
+      "source_path": "AlgebraicCombinatorics/tex/FPS/Multivariate.tex",
+      "target_theorems": [
+        "prop.fps.mulvar.comp-y-coeff"
+      ]
+    },
+    {
+      "id": "ac-partition-basics",
+      "title": "Partition basics",
+      "source_path": "AlgebraicCombinatorics/tex/Partitions/Basics.tex",
+      "target_theorems": [
+        "def.pars.parts",
+        "def.pars.pn-pkn",
+        "def.pars.iverson",
+        "def.pars.floor-ceil",
+        "prop.pars.basics",
+        "thm.pars.main-gf",
+        "thm.pars.main-gf-parts-n",
+        "thm.pars.main-gf-parts-I",
+        "def.pars.odd-dist-parts",
+        "thm.pars.odd-dist-equal",
+        "prop.pars.pkn=dual",
+        "cor.pars.p0kn=dual",
+        "thm.pars.main-gf-0n",
+        "thm.pars.sigma1",
+        "thm.pars.sigma1-I"
+      ]
+    },
+    {
+      "id": "ac-euler-s-pentagonal-number-theorem-jacobi",
+      "title": "Euler's pentagonal number theorem + Jacobi's triple product identity",
+      "source_path": "AlgebraicCombinatorics/tex/Partitions/PentagonalJacobi.tex",
+      "target_theorems": [
+        "def.pars.pent-num",
+        "thm.pars.pent",
+        "cor.pars.pn-rec",
+        "thm.pars.jtp1",
+        "thm.pars.jtp2",
+        "lem.fps.fxx=gxx",
+        "thm.pars.euler-sum-div-rec"
+      ]
+    },
+    {
+      "id": "ac-q-binomial-coefficients-preamble-basic-p",
+      "title": "q-binomial coefficients: (preamble) ... Basic properties",
+      "source_path": "AlgebraicCombinatorics/tex/Partitions/QBinomialBasic.tex",
+      "target_theorems": [
+        "prop.pars.qbinom.intro-count-binom",
+        "def.pars.qbinom.qbinom",
+        "prop.pars.qbinom.alt-defs",
+        "prop.pars.qbinom.0",
+        "prop.pars.qbinom.n0",
+        "thm.pars.qbinom.rec",
+        "thm.pars.qbinom.quot1",
+        "def.pars.qbinom.qint",
+        "thm.pars.qbinom.quot2",
+        "prop.pars.qbinom.symm"
+      ]
+    },
+    {
+      "id": "ac-q-binomial-coefficients-q-binomial-formu",
+      "title": "q-binomial coefficients: q-binomial formulas ... Limits of q-binomial coefficients",
+      "source_path": "AlgebraicCombinatorics/tex/Partitions/QBinomialFormulas.tex",
+      "target_theorems": [
+        "thm.pars.qbinom.binom1",
+        "lem.prodrule.sum-ai-plus-bi",
+        "thm.pars.qbinom.binom2",
+        "thm.pars.qbinom.subsp-count",
+        "lem.linalg.lin-ind-via-span",
+        "lem.pars.qbinom.lin-ind-count",
+        "lem.count.multijection",
+        "prop.pars.qbinom.lim1"
+      ]
+    },
+    {
+      "id": "ac-basic-definitions-transpositions-cycles",
+      "title": "Basic definitions + Transpositions, cycles and involutions",
+      "source_path": "AlgebraicCombinatorics/tex/Permutations/Basics.tex",
+      "target_theorems": [
+        "def.perm.perm",
+        "def.perm.Sn-iven",
+        "prop.perm.Sf",
+        "def.perm.notations",
+        "def.perm.tij",
+        "def.perm.si",
+        "prop.perm.si.rules",
+        "def.perm.cycs",
+        "def.perm.invol"
+      ]
+    },
+    {
+      "id": "ac-inversions-length-and-lehmer-codes-pream",
+      "title": "Inversions, length and Lehmer codes: (preamble) ... Lehmer codes",
+      "source_path": "AlgebraicCombinatorics/tex/Permutations/Inversions1.tex",
+      "target_theorems": [
+        "def.perm.invs",
+        "prop.perm.lengths-k-small-k",
+        "prop.perm.length.gf",
+        "def.perm.lehmer1",
+        "prop.perm.lehmer.l",
+        "thm.perm.lehmer.bij",
+        "def.perm.lehmer.lex-ord",
+        "prop.perm.lehmer.lex-ord.total",
+        "prop.perm.lehmer.lex"
+      ]
+    },
+    {
+      "id": "ac-inversions-length-and-lehmer-codes-more",
+      "title": "Inversions, length and Lehmer codes: More about lengths and simples",
+      "source_path": "AlgebraicCombinatorics/tex/Permutations/Inversions2.tex",
+      "target_theorems": [
+        "prop.perm.len.inv",
+        "lem.perm.len.ssl",
+        "prop.perm.lisitij",
+        "thm.perm.len.redword1",
+        "cor.perm.red.sigtau",
+        "cor.perm.generated",
+        "prop.perm.redword-lehmer"
+      ]
+    },
+    {
+      "id": "ac-signs-of-permutations",
+      "title": "Signs of permutations",
+      "source_path": "AlgebraicCombinatorics/tex/Permutations/Signs.tex",
+      "target_theorems": [
+        "def.perm.sign",
+        "prop.perm.sign.props",
+        "cor.perm.sign.hom",
+        "def.perm.even-odd",
+        "cor.perm.altgp",
+        "cor.perm.num-even",
+        "prop.perm.sign.X"
+      ]
+    },
+    {
+      "id": "ac-the-cycle-decomposition",
+      "title": "The cycle decomposition",
+      "source_path": "AlgebraicCombinatorics/tex/Permutations/CycleDecomposition.tex",
+      "target_theorems": [
+        "thm.perm.dcd.main",
+        "def.perm.cycs.cycs",
+        "prop.perm.cycs.same",
+        "prop.perm.cycs.sign"
+      ]
+    },
+    {
+      "id": "ac-cancellations-in-alternating-sums",
+      "title": "Cancellations in alternating sums",
+      "source_path": "AlgebraicCombinatorics/tex/SignedCounting/AlternatingSums.tex",
+      "target_theorems": [
+        "prop.binom.nhs",
+        "lem.sign.cancel1",
+        "lem.sign.cancel2",
+        "lem.sign.cancel3",
+        "def.root-of-unity.prim",
+        "thm.sign.q-lucas"
+      ]
+    },
+    {
+      "id": "ac-the-principles-of-inclusion-and-exclusio",
+      "title": "The principles of inclusion and exclusion: (preamble) ... The weighted version",
+      "source_path": "AlgebraicCombinatorics/tex/SignedCounting/InclusionExclusion1.tex",
+      "target_theorems": [
+        "thm.pie.1",
+        "thm.pie.count-sur",
+        "cor.pie.count-sur.cors",
+        "def.pie.dera",
+        "thm.pie.count-der",
+        "thm.pie.euler-tot",
+        "thm.pie.2"
+      ]
+    },
+    {
+      "id": "ac-the-principles-of-inclusion-and-exclusio-28",
+      "title": "The principles of inclusion and exclusion: Boolean M\\\"{o}bius inversion",
+      "source_path": "AlgebraicCombinatorics/tex/SignedCounting/InclusionExclusion2.tex",
+      "target_theorems": [
+        "thm.pie.moeb",
+        "lem.pie.two-sets-altsum"
+      ]
+    },
+    {
+      "id": "ac-more-subtractive-methods",
+      "title": "More subtractive methods",
+      "source_path": "AlgebraicCombinatorics/tex/SignedCounting/SubtractiveMethods.tex",
+      "target_theorems": [
+        "thm.cancel.all-even",
+        "lem.cancel.all-even.l1",
+        "lem.cancel.all-even.l2"
+      ]
+    },
+    {
+      "id": "ac-determinants-preamble-basic-properties",
+      "title": "Determinants: (preamble) ... Basic properties",
+      "source_path": "AlgebraicCombinatorics/tex/Determinants/BasicProperties.tex",
+      "target_theorems": [
+        "def.det.det",
+        "prop.det.xiyj",
+        "prop.det.xi+yj",
+        "thm.det.transp",
+        "thm.det.triang",
+        "thm.det.rowop",
+        "thm.det.colop",
+        "cor.det.sig-row-col",
+        "thm.det.detAB",
+        "cor.det.scale-row-col"
+      ]
+    },
+    {
+      "id": "ac-determinants-cauchy-binet-factoring-the",
+      "title": "Determinants: Cauchy--Binet ... Factoring the matrix",
+      "source_path": "AlgebraicCombinatorics/tex/Determinants/CauchyBinet.tex",
+      "target_theorems": [
+        "thm.det.CB",
+        "def.det.sub",
+        "thm.det.det(A+B)",
+        "lem.det.minors-diag",
+        "thm.det.det(A+D)",
+        "prop.det.x+ai",
+        "prop.det.charpol-explicit",
+        "prop.det.pascal-LU"
+      ]
+    },
+    {
+      "id": "ac-determinants-factor-hunting-desnanot-jac",
+      "title": "Determinants: Factor hunting ... Desnanot--Jacobi and Dodgson condensation",
+      "source_path": "AlgebraicCombinatorics/tex/Determinants/DesnanotJacobi.tex",
+      "target_theorems": [
+        "thm.det.vander",
+        "lem.det.vander.a.pol",
+        "prop.det.(xi+yj)n-1",
+        "thm.det.laplace",
+        "prop.det.laplace.0",
+        "def.det.adj",
+        "thm.det.adj.inverse",
+        "thm.det.laplace-multi",
+        "thm.det.des-jac-1",
+        "thm.det.cauchy",
+        "thm.det.des-jac-2",
+        "thm.det.jacobi-complement"
+      ]
+    },
+    {
+      "id": "ac-the-lindstrom-gessel-viennot-lemma-pream",
+      "title": "The Lindstr{o}m--Gessel--Viennot lemma: (preamble) ... The LGV lemma for k paths",
+      "source_path": "AlgebraicCombinatorics/tex/Determinants/LGV1.tex",
+      "target_theorems": [
+        "def.lgv.lattice",
+        "prop.lgv.1-paths.ct",
+        "def.lgv.path-tups",
+        "prop.lgv.2paths.count",
+        "prop.lgv.jordan-2",
+        "cor.lgv.binom-unimod",
+        "prop.lgv.kpaths.count"
+      ]
+    },
+    {
+      "id": "ac-the-lindstrom-gessel-viennot-lemma-the-w",
+      "title": "The Lindstr{o}m--Gessel--Viennot lemma: The weighted version ... The nonpermutable case",
+      "source_path": "AlgebraicCombinatorics/tex/Determinants/LGV2.tex",
+      "target_theorems": [
+        "thm.lgv.kpaths.wt",
+        "thm.lgv.kpaths.wt-dg",
+        "cor.lgv.kpaths.wt-np",
+        "cor.lgv.binom-det-nonneg",
+        "cor.lgv.catalan-hankel-det-0"
+      ]
+    },
+    {
+      "id": "ac-definitions-and-examples-of-symmetric",
+      "title": "Definitions and examples of symmetric",
+      "source_path": "AlgebraicCombinatorics/tex/SymmetricFunctions/Definitions.tex",
+      "target_theorems": [
+        "def.sf.PS",
+        "prop.sf.SN-acts",
+        "prop.sf.SN-acts-by-alg-auts",
+        "thm.sf.S-subalg",
+        "def.sf.ring-of-symm",
+        "def.sf.monomial",
+        "def.sf.ehp",
+        "prop.sf.en=0",
+        "thm.sf.NG",
+        "prop.sf.e-h-FPS",
+        "thm.sf.ftsf",
+        "lem.sf.simples-enough"
+      ]
+    },
+    {
+      "id": "ac-n-partitions-and-monomial-symmetric-poly",
+      "title": "N-partitions and monomial symmetric polynomials",
+      "source_path": "AlgebraicCombinatorics/tex/SymmetricFunctions/MonomialSymmetric.tex",
+      "target_theorems": [
+        "def.sf.Npar",
+        "prop.sf.Npar-as-par",
+        "def.sf.sort",
+        "def.sf.m",
+        "prop.sf.ehp-through-m",
+        "thm.sf.m-basis",
+        "prop.sf.sigma-pol-coeff"
+      ]
+    },
+    {
+      "id": "ac-schur-polynomials-preamble-skew-young-di",
+      "title": "Schur polynomials: (preamble) ... Skew Young diagrams and skew Schur polynomials",
+      "source_path": "AlgebraicCombinatorics/tex/SymmetricFunctions/SchurBasics.tex",
+      "target_theorems": [
+        "def.sf.alternants",
+        "def.sf.ydiag",
+        "def.sf.ytab",
+        "def.sf.ssyt",
+        "def.sf.ytab.xT",
+        "def.sf.schur",
+        "thm.sf.schur-symm",
+        "def.sf.par-subset",
+        "def.sf.skew-diag",
+        "lem.sf.skew-diag.convexity",
+        "def.sf.skew-tab",
+        "def.sf.skew-ssyt",
+        "lem.sf.skew-ssyt.increase",
+        "def.sf.ytab.skew-xT",
+        "def.sf.skew-schur",
+        "thm.sf.skew-schur-symm"
+      ]
+    },
+    {
+      "id": "ac-schur-polynomials-the-littlewood-richard",
+      "title": "Schur polynomials: The Littlewood--Richardson rule (part 1)",
+      "source_path": "AlgebraicCombinatorics/tex/SymmetricFunctions/LittlewoodRichardson.tex",
+      "target_theorems": [
+        "def.sf.tuple-addition",
+        "def.sf.content",
+        "def.sf.col-tab",
+        "def.sf.yamanouchi",
+        "thm.sf.lr-zy",
+        "lem.sf.stemb-lem",
+        "lem.sf.tab-greater-i",
+        "def.cring.reg",
+        "lem.cring.reg.cancel",
+        "lem.sf.arho-reg",
+        "lem.sf.alternant-0"
+      ]
+    },
+    {
+      "id": "ac-schur-polynomials-the-pieri-rules-the-ja",
+      "title": "Schur polynomials: The Pieri rules ... The Jacobi--Trudi identities",
+      "source_path": "AlgebraicCombinatorics/tex/SymmetricFunctions/PieriJacobiTrudi.tex",
+      "target_theorems": [
+        "def.sf.strips",
+        "prop.sf.strips.entries",
+        "thm.sf.pieri",
+        "thm.sf.jt-h",
+        "thm.sf.jt-e"
+      ]
+    },
+    {
+      "id": "ac-details-infinite-products-part-1-part-2",
+      "title": "Details: Infinite products (part 1) (part 2)",
+      "source_path": "AlgebraicCombinatorics/tex/Details/InfiniteProducts1.tex",
+      "target_theorems": [
+        "lem.fps.prod.irlv.cong-div",
+        "lem.fps.prods-mulable-subfams-appr",
+        "lem.fps.prods-mulable-rules.SW1.lem1"
+      ]
+    },
+    {
+      "id": "ac-details-infinite-products-part-2-part-2",
+      "title": "Details: Infinite products (part 2) (part 2)",
+      "source_path": "AlgebraicCombinatorics/tex/Details/InfiniteProducts2.tex",
+      "target_theorems": [
+        "lem.fps.subs.rule-infprod-fin"
+      ]
+    },
+    {
+      "id": "ac-details-domino-tilings",
+      "title": "Details: Domino tilings",
+      "source_path": "AlgebraicCombinatorics/tex/Details/DominoTilings.tex",
+      "target_theorems": [
+        "def.gf.weighted-set.domino.Rn3.ABC",
+        "prop.gf.weighted-set.domino.Rn3.ABC"
+      ]
+    },
+    {
+      "id": "ac-details-limits-of-fpss",
+      "title": "Details: Limits of FPSs",
+      "source_path": "AlgebraicCombinatorics/tex/Details/Limits.tex",
+      "target_theorems": [
+        "prop.fps.lim.sum-prod.K",
+        "prop.fps.lim.sum-prod.L"
+      ]
+    },
+    {
+      "id": "ac-details-laurent-power-series",
+      "title": "Details: Laurent power series",
+      "source_path": "AlgebraicCombinatorics/tex/Details/LaurentSeries.tex",
+      "target_theorems": [
+        "lem.fps.laure.xa",
+        "prop.fps.laure.xk"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,4231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Repoprover Trajectory Viewer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://unpkg.com/highlightjs-lean/dist/lean.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<style>
+  :root {
+    --bg: #0d1117;
+    --bg2: #161b22;
+    --bg3: #21262d;
+    --border: #30363d;
+    --text: #c9d1d9;
+    --text-dim: #8b949e;
+    --accent: #58a6ff;
+    --green: #3fb950;
+    --red: #f85149;
+    --yellow: #d29922;
+    --orange: #db6d28;
+    --purple: #bc8cff;
+    --cyan: #56d4dd;
+    --pink: #f778ba;
+    --font-mono: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--font-sans);
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  /* Top bar */
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    padding: 6px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .topbar h1 {
+    font-size: 14px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .topbar h1 a {
+    color: var(--text);
+    text-decoration: none;
+  }
+  .topbar h1 a:hover {
+    color: var(--accent);
+  }
+  .topbar .breadcrumb {
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+  .topbar .breadcrumb a {
+    color: var(--accent);
+    text-decoration: none;
+  }
+  .topbar .breadcrumb a:hover {
+    text-decoration: underline;
+  }
+  .topbar .status {
+    font-size: 13px;
+    color: var(--text-dim);
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .topbar .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+  .dot.live { background: var(--green); animation: pulse 2s infinite; }
+  .dot.stale { background: var(--yellow); }
+  .dot.dead { background: var(--text-dim); }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .file-input {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .file-input select {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: var(--font-mono);
+    max-width: 400px;
+  }
+  .file-input button, .btn {
+    background: var(--accent);
+    border: none;
+    color: #fff;
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .file-input button:hover, .btn:hover { opacity: 0.9; }
+  .btn-secondary {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text);
+  }
+
+  /* Layout */
+  .container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 12px 16px;
+  }
+
+  /* Stats row */
+  .stats-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .stat-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+  }
+  .stat-card .label {
+    font-size: 11px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+  .stat-card .value {
+    font-weight: 600;
+  }
+  .stat-card .value.green { color: var(--green); }
+  .stat-card .value.red { color: var(--red); }
+  .stat-card .value.yellow { color: var(--yellow); }
+  .stat-card .value.accent { color: var(--accent); }
+  .stat-card .value.dim { color: var(--text-dim); font-weight: 400; }
+  .stat-card .value.small { font-size: 12px; }
+  .stat-card .accent { color: var(--accent); font-weight: 600; }
+
+  /* Status pills */
+  .pill {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+  .pill.done, .pill.completed, .pill.success { background: rgba(63, 185, 80, 0.15); color: var(--green); }
+  .pill.error { background: rgba(248, 81, 73, 0.15); color: var(--red); }
+  .pill.in_progress, .pill.in-progress { background: rgba(88, 166, 255, 0.15); color: var(--accent); animation: pulse 2s infinite; }
+  .pill.pending, .pill.unknown { background: rgba(139, 148, 158, 0.15); color: var(--text-dim); }
+  .pill.max_iterations { background: rgba(210, 153, 34, 0.15); color: var(--yellow); }
+
+  /* Agents table */
+  .agents-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--bg2);
+    border-radius: 6px;
+    overflow: hidden;
+    table-layout: auto;
+  }
+  .agents-table th, .agents-table td {
+    padding: 10px 14px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  .agents-table th {
+    background: var(--bg3);
+    font-size: 11px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    font-weight: 600;
+  }
+  .agents-table tr:last-child td {
+    border-bottom: none;
+  }
+  .agents-table tr:hover td {
+    background: var(--bg3);
+  }
+  .agents-table .agent-id {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--accent);
+  }
+  .agents-table .agent-type {
+    font-size: 12px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: 500;
+  }
+  .agents-table .agent-type.type-sketch {
+    background: rgba(188, 140, 255, 0.15);
+    color: var(--purple);
+  }
+  .agents-table .agent-type.type-prove {
+    background: rgba(88, 166, 255, 0.15);
+    color: var(--accent);
+  }
+  .agents-table .agent-type.type-fix {
+    background: rgba(210, 153, 34, 0.15);
+    color: var(--yellow);
+  }
+  .agents-table .agent-type.type-triage {
+    background: rgba(247, 120, 186, 0.15);
+    color: var(--pink);
+  }
+  .agents-table .agent-type.type-scan {
+    background: rgba(219, 109, 40, 0.15);
+    color: var(--orange);
+  }
+  .agents-table .agent-type.type-progress {
+    background: rgba(100, 149, 237, 0.15);
+    color: var(--blue);
+  }
+  .agents-table .agent-type.type-maintain {
+    background: rgba(125, 200, 100, 0.15);
+    color: var(--green);
+  }
+  .agents-table .agent-type.type-math_reviewer,
+  .agents-table .agent-type.type-engineering_reviewer {
+    background: rgba(86, 212, 221, 0.15);
+    color: var(--cyan);
+  }
+  .agents-table .agent-status {
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+  .agents-table .status-in_progress {
+    background: rgba(219, 109, 40, 0.15);
+    color: var(--orange);
+  }
+  .agents-table .status-done {
+    background: rgba(63, 185, 80, 0.15);
+    color: var(--green);
+  }
+  .agents-table .status-error {
+    background: rgba(248, 81, 73, 0.15);
+    color: var(--red);
+  }
+  .agents-table .status-pending_revision {
+    background: rgba(210, 153, 34, 0.15);
+    color: var(--yellow);
+  }
+  .agents-table .status-approved {
+    background: rgba(63, 185, 80, 0.15);
+    color: var(--green);
+  }
+  .agents-table .status-rejected {
+    background: rgba(248, 81, 73, 0.15);
+    color: var(--red);
+  }
+  .agents-table .status-failure {
+    background: rgba(248, 81, 73, 0.15);
+    color: var(--red);
+  }
+  .agents-table .status-blocked {
+    background: rgba(248, 81, 73, 0.15);
+    color: var(--red);
+  }
+  .agents-table .pr-status {
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .agents-table .pr-status-none {
+    color: var(--text-dim);
+  }
+  .agents-table .pr-status-pending_review {
+    background: rgba(219, 109, 40, 0.15);
+    color: var(--orange);
+  }
+  .agents-table .pr-status-in_review {
+    background: rgba(188, 140, 255, 0.15);
+    color: var(--purple);
+  }
+  .agents-table .pr-status-needs_revision {
+    background: rgba(210, 153, 34, 0.15);
+    color: var(--yellow);
+  }
+  .agents-table .pr-status-approved {
+    background: rgba(63, 185, 80, 0.15);
+    color: var(--green);
+  }
+  .agents-table .pr-status-merged {
+    background: rgba(63, 185, 80, 0.15);
+    color: var(--green);
+  }
+  .agents-table .pr-status-empty {
+    background: rgba(128, 128, 128, 0.15);
+    color: var(--muted);
+  }
+  .agents-table .pr-status-revision_in_progress {
+    background: rgba(88, 166, 255, 0.15);
+    color: var(--accent);
+  }
+  .agents-table .pr-status-failed {
+    background: rgba(255, 85, 85, 0.15);
+    color: var(--red);
+  }
+  .agents-table .actions {
+    display: flex;
+    gap: 8px;
+  }
+  .agents-table .actions a {
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    text-decoration: none;
+    background: var(--bg3);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  .agents-table .actions a:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .agents-table .actions a.primary {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+  }
+  .agents-table .actions a.primary:hover {
+    opacity: 0.9;
+  }
+  .agents-table .iterations,
+  .agents-table .runtime,
+  .agents-table .diff-stats {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-dim);
+    text-align: center;
+  }
+  .agents-table .runtime {
+    width: 80px;
+    min-width: 80px;
+    white-space: nowrap;
+  }
+
+  /* Reviewer pills in table */
+  .review-pills {
+    display: inline-flex;
+    gap: 4px;
+  }
+  .reviewer-pill {
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 8px;
+    font-weight: 600;
+  }
+  .reviewer-pill.math { background: rgba(188, 140, 255, 0.2); border: 1px solid var(--purple); color: var(--purple); }
+  .reviewer-pill.engineering { background: rgba(86, 212, 221, 0.2); border: 1px solid var(--cyan); color: var(--cyan); }
+  .reviewer-pill.build-pass { background: rgba(63, 185, 80, 0.15); border: 1px solid var(--green); color: var(--green); }
+  .reviewer-pill.build-fail { background: rgba(248, 81, 73, 0.15); border: 1px solid var(--red); color: var(--red); }
+
+  /* Reviewer dialog link */
+  .reviewer-dialog-link {
+    margin-left: 8px;
+    text-decoration: none;
+    font-size: 12px;
+    color: var(--text-dim);
+    transition: color 0.2s;
+  }
+  .reviewer-dialog-link:hover {
+    color: var(--text-main);
+  }
+
+  /* Page header */
+  .page-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+  .page-header h2 {
+    font-size: 18px;
+    font-weight: 600;
+  }
+  .page-header .back-link {
+    color: var(--accent);
+    text-decoration: none;
+    font-size: 14px;
+  }
+  .page-header .back-link:hover {
+    text-decoration: underline;
+  }
+
+  /* Token stats bar */
+  .dialog-stats {
+    margin-bottom: 12px;
+  }
+  .token-stats-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    padding: 10px 14px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 13px;
+  }
+  .token-stat {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .token-label {
+    color: var(--text-dim);
+    font-size: 11px;
+    text-transform: uppercase;
+  }
+  .token-value {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    color: var(--text);
+  }
+  .token-value.token-total {
+    color: var(--cyan);
+  }
+  .token-value.token-last {
+    color: var(--orange);
+  }
+  .token-value.status-done { color: var(--green); }
+  .token-value.status-error { color: var(--red); }
+  .token-value.status-max_iterations { color: var(--yellow); }
+
+  /* Agent error banner */
+  .agent-error-banner {
+    margin-top: 12px;
+    padding: 12px 16px;
+    background: rgba(248, 81, 73, 0.1);
+    border: 1px solid var(--red);
+    border-radius: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .agent-error-banner .error-icon {
+    color: var(--red);
+    font-size: 16px;
+  }
+  .agent-error-banner .error-label {
+    color: var(--red);
+    font-weight: 600;
+    font-size: 13px;
+  }
+  .agent-error-banner .error-message {
+    margin: 0;
+    padding: 8px 12px;
+    background: var(--bg1);
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text);
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-x: auto;
+    max-height: 300px;
+    overflow-y: auto;
+  }
+
+  /* Messages (dialog page) */
+  .messages-container {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .message {
+    padding: 2px 8px;
+    border-bottom: none;
+  }
+  .message:last-child { border-bottom: none; }
+  .message.empty-content {
+    padding: 2px 8px;
+  }
+  .message-header {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .message-role {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    padding: 1px 4px;
+    border-radius: 3px;
+  }
+  .message-role.user { background: rgba(88, 166, 255, 0.2); color: var(--accent); }
+  .message-role.assistant { background: rgba(188, 140, 255, 0.2); color: var(--purple); }
+  .message-role.tool { background: rgba(57, 211, 83, 0.2); color: var(--cyan); }
+  .message-time {
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+  .message-content {
+    display: inline;
+    font-size: 13px;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin-left: 6px;
+  }
+  .message-content:empty {
+    display: none;
+  }
+  .message-content.truncated {
+    max-height: 200px;
+    overflow: hidden;
+    position: relative;
+  }
+  .message-content.truncated::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 40px;
+    background: linear-gradient(transparent, var(--bg2));
+  }
+  .tool-indicator {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 4px;
+  }
+  .message.empty-content .tool-indicator {
+    margin-top: 2px;
+  }
+  .expand-content-btn {
+    display: block;
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--accent);
+    cursor: pointer;
+    background: none;
+    border: none;
+  }
+
+  /* Tool calls */
+  .tool-call {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin: 8px 0;
+    overflow: hidden;
+  }
+  .tool-call-header {
+    padding: 6px 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    user-select: none;
+    font-size: 12px;
+  }
+  .tool-call-header:hover { background: var(--bg2); }
+  .tool-call-header .tool-name {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    color: var(--cyan);
+  }
+  .tool-call-header .tool-duration {
+    margin-left: auto;
+    color: var(--text-dim);
+  }
+  .tool-call-header .expand-icon {
+    font-size: 10px;
+    color: var(--text-dim);
+    transition: transform 0.2s;
+  }
+  .tool-call.expanded .expand-icon { transform: rotate(90deg); }
+  .tool-output-preview {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    padding: 4px 12px 8px 12px;
+    white-space: pre-wrap;
+    line-height: 1.3;
+    max-height: 60px;
+    overflow: hidden;
+  }
+  .tool-call-body {
+    display: none;
+    border-top: 1px solid var(--border);
+    padding: 10px;
+  }
+  .tool-call.expanded .tool-call-body { display: block; }
+  .tool-args, .tool-result {
+    margin-bottom: 8px;
+  }
+  .tool-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 4px;
+  }
+
+  /* Compaction events */
+  .compaction-event {
+    background: linear-gradient(135deg, var(--bg3) 0%, #1a1f2e 100%);
+    border: 1px solid var(--purple);
+    border-radius: 6px;
+    margin: 12px 0;
+    overflow: hidden;
+  }
+  .compaction-header {
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    user-select: none;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .compaction-header:hover { background: rgba(188, 140, 255, 0.1); }
+  .compaction-icon {
+    font-family: var(--font-mono);
+    color: var(--purple);
+    font-weight: 700;
+  }
+  .compaction-title {
+    color: var(--purple);
+  }
+  .compaction-reduction {
+    margin-left: auto;
+    color: var(--green);
+    font-family: var(--font-mono);
+  }
+  .compaction-header .expand-icon {
+    font-size: 10px;
+    color: var(--text-dim);
+    transition: transform 0.2s;
+  }
+  .compaction-event.expanded .expand-icon { transform: rotate(90deg); }
+  .compaction-stats {
+    padding: 6px 12px 10px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 12px;
+    color: var(--text-dim);
+    flex-wrap: wrap;
+  }
+  .compaction-stat .stat-label {
+    color: var(--text-dim);
+  }
+  .compaction-stat .stat-value {
+    color: var(--text);
+    font-family: var(--font-mono);
+  }
+  .compaction-arrow {
+    color: var(--purple);
+  }
+  .compaction-summary {
+    display: none;
+    border-top: 1px solid var(--border);
+    padding: 12px;
+  }
+  .compaction-event.expanded .compaction-summary { display: block; }
+  .compaction-summary-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    color: var(--purple);
+    margin-bottom: 8px;
+  }
+  .compaction-summary-content {
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .compaction-summary-content h2 {
+    font-size: 14px;
+    color: var(--accent);
+    margin: 12px 0 6px 0;
+  }
+  .compaction-summary-content h2:first-child { margin-top: 0; }
+  .compaction-summary-content ul, .compaction-summary-content ol {
+    margin: 6px 0;
+    padding-left: 20px;
+  }
+  .compaction-summary-content li { margin: 3px 0; }
+  .compaction-summary-content code {
+    background: var(--bg);
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-size: 12px;
+  }
+
+  /* Code blocks */
+  pre {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 10px;
+    overflow-x: auto;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.5;
+    max-height: 400px;
+    overflow-y: auto;
+  }
+  pre.large-preview {
+    max-height: 200px;
+    position: relative;
+  }
+  pre.large-preview::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 30px;
+    background: linear-gradient(transparent, var(--bg));
+  }
+  code { font-family: inherit; }
+
+  /* Diff display - GitHub style */
+  .diff-content {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.5;
+    white-space: pre;
+    overflow-x: auto;
+    max-height: 600px;
+    overflow-y: auto;
+    background: var(--bg);
+    border-radius: 6px;
+  }
+  .diff-line {
+    display: block;
+    padding: 0 12px;
+    min-height: 20px;
+  }
+  .diff-line.line-add {
+    background: rgba(63, 185, 80, 0.15);
+  }
+  .diff-line.line-add code { color: var(--text); }
+  .diff-line.line-add .diff-line-sign { color: var(--green); }
+  .diff-line.line-del {
+    background: rgba(248, 81, 73, 0.15);
+  }
+  .diff-line.line-del code { color: var(--text); }
+  .diff-line.line-del .diff-line-sign { color: var(--red); }
+  .diff-line.line-hunk {
+    background: rgba(188, 140, 255, 0.1);
+    color: var(--purple);
+    font-weight: 600;
+    border-left: 4px solid var(--purple);
+  }
+  .diff-line.line-ctx {
+    border-left: 4px solid transparent;
+    color: var(--text-dim);
+  }
+  .diff-line.line-header {
+    background: var(--bg3);
+    color: var(--text-dim);
+    font-weight: 600;
+  }
+  .diff-line-num {
+    display: inline-block;
+    width: 40px;
+    text-align: right;
+    padding-right: 8px;
+    color: var(--text-dim);
+    user-select: none;
+    opacity: 0.6;
+  }
+  .diff-line-sign {
+    display: inline-block;
+    width: 12px;
+    font-weight: bold;
+  }
+  /* Lean syntax highlighting in diffs */
+  .diff-content .hljs-keyword { color: #ff79c6; }
+  .diff-content .hljs-built_in { color: #8be9fd; }
+  .diff-content .hljs-type { color: #8be9fd; }
+  .diff-content .hljs-string { color: #f1fa8c; }
+  .diff-content .hljs-number { color: #bd93f9; }
+  .diff-content .hljs-comment { color: #6272a4; font-style: italic; }
+  .diff-content .hljs-title { color: #50fa7b; }
+  .diff-content .hljs-symbol { color: #ffb86c; }
+  .diff-content .line-add .hljs-keyword,
+  .diff-content .line-add .hljs-built_in,
+  .diff-content .line-add .hljs-type,
+  .diff-content .line-add .hljs-title { filter: brightness(1.1); }
+  .diff-content .line-del .hljs-keyword,
+  .diff-content .line-del .hljs-built_in,
+  .diff-content .line-del .hljs-type,
+  .diff-content .line-del .hljs-title { filter: brightness(0.9) saturate(0.8); }
+
+  /* PR page styles */
+  .pr-section {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 16px;
+    overflow: visible;
+  }
+  .pr-section-header {
+    padding: 10px 14px;
+    font-size: 14px;
+    font-weight: 600;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg3);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .pr-section-body {
+    padding: 14px;
+  }
+
+  /* Review comments */
+  .review-item {
+    background: var(--bg3);
+    border-radius: 6px;
+    padding: 12px;
+    margin-bottom: 10px;
+  }
+  .review-item:last-child {
+    margin-bottom: 0;
+  }
+  .review-item-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .review-item-type {
+    font-weight: 600;
+    font-size: 13px;
+    padding: 2px 8px;
+    border-radius: 4px;
+  }
+  .review-type-math { background: rgba(188, 140, 255, 0.2); color: var(--purple); }
+  .review-type-eng { background: rgba(86, 212, 221, 0.2); color: var(--cyan); }
+  .review-type-build { background: rgba(219, 109, 40, 0.2); color: var(--orange); }
+  .review-item-verdict {
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .review-item-summary {
+    margin-top: 8px;
+    padding: 12px;
+    background: var(--bg-primary);
+    border-radius: 4px;
+    font-size: 14px;
+    line-height: 1.6;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    overflow-x: auto;
+  }
+  .review-item-summary h1, .review-item-summary h2, .review-item-summary h3,
+  .review-item-summary h4, .review-item-summary h5, .review-item-summary h6 {
+    margin-top: 20px;
+    margin-bottom: 10px;
+    font-weight: 600;
+    line-height: 1.4;
+  }
+  .review-item-summary h1 { font-size: 1.4em; }
+  .review-item-summary h2 { font-size: 1.25em; }
+  .review-item-summary h3 { font-size: 1.1em; }
+  .review-item-summary h4, .review-item-summary h5, .review-item-summary h6 { font-size: 1em; }
+  .review-item-summary p { margin: 8px 0; }
+  .review-item-summary ul, .review-item-summary ol { margin: 8px 0 8px 24px; }
+  .review-item-summary li { margin: 4px 0; }
+  .review-item-summary code {
+    background: rgba(88, 166, 255, 0.12);
+    color: var(--cyan);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+  }
+  .review-item-summary pre {
+    background: var(--bg);
+    padding: 12px;
+    border-radius: 6px;
+    overflow-x: auto;
+    margin: 12px 0;
+    border: 1px solid var(--border);
+  }
+  .review-item-summary pre code {
+    background: none;
+    padding: 0;
+    color: var(--text);
+  }
+  .review-item-summary strong { font-weight: 600; }
+  .review-item-summary em { font-style: italic; }
+  .review-item-summary blockquote {
+    border-left: 3px solid var(--border);
+    padding-left: 12px;
+    margin: 8px 0;
+    color: var(--text-dim);
+  }
+  .review-item-summary a { color: var(--accent); text-decoration: none; }
+  .review-item-summary a:hover { text-decoration: underline; }
+
+  /* Merge status */
+  .merge-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: 4px;
+    margin-bottom: 8px;
+  }
+  .merge-status.ready { background: rgba(63, 185, 80, 0.2); border: 2px solid var(--green); color: var(--green); }
+  .merge-status.waiting { background: rgba(210, 153, 34, 0.2); border: 2px solid var(--yellow); color: var(--yellow); }
+  .merge-status.blocked { background: rgba(248, 81, 73, 0.2); border: 2px solid var(--red); color: var(--red); }
+  .merge-status.merged { background: rgba(63, 185, 80, 0.2); border: 2px solid var(--green); color: var(--green); }
+
+  /* Empty state */
+  .empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-dim);
+  }
+  .empty-state h2 {
+    font-size: 18px;
+    margin-bottom: 8px;
+  }
+  .empty-state p {
+    font-size: 14px;
+  }
+
+  /* Copy button */
+  .copy-btn {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+  pre:hover .copy-btn,
+  .code-wrapper:hover .copy-btn { opacity: 1; }
+  .copy-btn:hover { background: var(--bg2); }
+
+  /* Revision timeline */
+  .revision-timeline {
+    margin-bottom: 16px;
+  }
+  .revision-entry {
+    display: flex;
+    border-left: 2px solid var(--border);
+    margin-left: 8px;
+    padding-left: 16px;
+    padding-bottom: 16px;
+    position: relative;
+  }
+  .revision-entry:last-child {
+    border-left-color: transparent;
+    padding-bottom: 0;
+  }
+  .revision-entry::before {
+    content: '';
+    position: absolute;
+    left: -6px;
+    top: 0;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--bg3);
+    border: 2px solid var(--border);
+  }
+  .revision-entry.current::before {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+  .revision-entry.approved::before {
+    background: var(--green);
+    border-color: var(--green);
+  }
+  .revision-entry.rejected::before {
+    background: var(--red);
+    border-color: var(--red);
+  }
+  .revision-content {
+    flex: 1;
+  }
+  .revision-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 6px;
+  }
+  .revision-label {
+    font-weight: 600;
+    font-size: 13px;
+  }
+  .revision-time {
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .revision-verdict {
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 600;
+  }
+  .revision-body {
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+  .revision-diff-toggle {
+    margin-top: 8px;
+  }
+  .revision-diff-toggle button {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    cursor: pointer;
+  }
+  .revision-diff-toggle button:hover {
+    border-color: var(--accent);
+  }
+  .revision-diff-content {
+    margin-top: 8px;
+    display: none;
+  }
+  .revision-diff-content.expanded {
+    display: block;
+  }
+
+  /* PR Timeline Cards */
+  .pr-timeline {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .pr-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    transition: border-color 0.2s;
+  }
+  .pr-card:hover {
+    border-color: var(--accent);
+  }
+  .pr-card.merged {
+    border-left: 3px solid var(--green);
+  }
+  .pr-card.approved {
+    border-left: 3px solid var(--cyan);
+  }
+  .pr-card.pending {
+    border-left: 3px solid var(--yellow);
+  }
+  .pr-card-header {
+    padding: 12px 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    user-select: none;
+  }
+  .pr-card-header:hover {
+    background: var(--bg3);
+  }
+  .pr-card-status-icon {
+    font-size: 16px;
+    width: 24px;
+    text-align: center;
+  }
+  .pr-card-status-icon.merged { color: var(--green); }
+  .pr-card-status-icon.approved { color: var(--cyan); }
+  .pr-card-status-icon.pending { color: var(--yellow); }
+  .pr-card-info {
+    flex: 1;
+    min-width: 0;
+  }
+  .pr-card-title {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .pr-card-meta {
+    font-size: 12px;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 2px;
+  }
+  .pr-card-stats {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    display: flex;
+    gap: 8px;
+  }
+  .pr-card-time {
+    font-size: 11px;
+    color: var(--text-dim);
+    white-space: nowrap;
+  }
+  .pr-card-expand-icon {
+    color: var(--text-dim);
+    font-size: 12px;
+    transition: transform 0.2s;
+  }
+  .pr-card.expanded .pr-card-expand-icon {
+    transform: rotate(90deg);
+  }
+  .pr-card-body {
+    display: none;
+    border-top: 1px solid var(--border);
+    padding: 16px;
+    background: var(--bg);
+  }
+  .pr-card.expanded .pr-card-body {
+    display: block;
+  }
+  .pr-card-section {
+    margin-bottom: 12px;
+  }
+  .pr-card-section:last-child {
+    margin-bottom: 0;
+  }
+  .pr-card-section-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 6px;
+    font-weight: 600;
+  }
+  .pr-card-review-pills {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .pr-timeline-section {
+    margin-bottom: 24px;
+  }
+  .pr-timeline-section-header {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* hljs */
+  .hljs { background: transparent !important; }
+
+  /* Event log */
+  .event-log {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    max-height: 300px;
+    overflow-y: auto;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.6;
+  }
+  .event-log-entry {
+    padding: 2px 10px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .event-log-entry:last-child { border-bottom: none; }
+  .event-log-entry:hover { background: var(--bg3); }
+  .event-log-ts {
+    color: var(--text-dim);
+    white-space: nowrap;
+    flex-shrink: 0;
+    min-width: 70px;
+  }
+  .event-log-type {
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    white-space: nowrap;
+    min-width: 70px;
+    text-align: center;
+  }
+  .event-log-type.session_start { background: rgba(88, 166, 255, 0.2); color: var(--accent); }
+  .event-log-type.session_end { background: rgba(88, 166, 255, 0.2); color: var(--accent); }
+  .event-log-type.agent_start { background: rgba(86, 212, 221, 0.2); color: var(--cyan); }
+  .event-log-type.agent_launched { background: rgba(86, 212, 221, 0.2); color: var(--cyan); }
+  .event-log-type.agent_done { background: rgba(63, 185, 80, 0.2); color: var(--green); }
+  .event-log-type.review_launched { background: rgba(188, 140, 255, 0.2); color: var(--purple); }
+  .event-log-type.review_completed { background: rgba(188, 140, 255, 0.2); color: var(--purple); }
+  .event-log-type.build_completed { background: rgba(219, 109, 40, 0.2); color: var(--orange); }
+  .event-log-type.revision_started { background: rgba(210, 153, 34, 0.2); color: var(--yellow); }
+  .event-log-type.pr_submitted { background: rgba(63, 185, 80, 0.2); color: var(--green); }
+  .event-log-type.merge_completed { background: rgba(63, 185, 80, 0.2); color: var(--green); }
+  .event-log-type.merge_conflict_detected { background: rgba(248, 81, 73, 0.2); color: var(--red); }
+  .event-log-type.iteration { background: rgba(139, 148, 158, 0.15); color: var(--text-dim); }
+  .event-log-type.escalation { background: rgba(248, 81, 73, 0.15); color: var(--red); }
+  .event-log-type.fix_request { background: rgba(210, 153, 34, 0.2); color: var(--yellow); }
+  .event-log-type.pr_status_changed { background: rgba(139, 148, 158, 0.15); color: var(--text-dim); }
+
+  /* PR Chronological Timeline */
+  .pr-chrono-timeline {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    margin: 16px 0;
+    border-left: 2px solid var(--border);
+    margin-left: 8px;
+    padding-left: 16px;
+  }
+  .pr-chrono-event {
+    position: relative;
+    padding: 8px 12px;
+    background: var(--bg2);
+    border-radius: 4px;
+    margin-bottom: 8px;
+    font-size: 12px;
+  }
+  .pr-chrono-event::before {
+    content: '';
+    position: absolute;
+    left: -22px;
+    top: 12px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--border);
+    border: 2px solid var(--bg);
+  }
+  .pr-chrono-event.success::before { background: var(--green); }
+  .pr-chrono-event.failure::before { background: var(--red); }
+  .pr-chrono-event.pending::before { background: var(--yellow); }
+  .pr-chrono-event.info::before { background: var(--accent); }
+  .pr-chrono-event-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+  .pr-chrono-event-type {
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+  .pr-chrono-event-type.pr_submitted { background: rgba(88, 166, 255, 0.2); color: var(--accent); }
+  .pr-chrono-event-type.pre_review_merge, .pr-chrono-event-type.pre_review_rebase { background: rgba(139, 148, 158, 0.2); color: var(--text-dim); }
+  .pr-chrono-event-type.review_launched { background: rgba(188, 140, 255, 0.2); color: var(--purple); }
+  .pr-chrono-event-type.review_completed { background: rgba(188, 140, 255, 0.2); color: var(--purple); }
+  .pr-chrono-event-type.build_completed { background: rgba(219, 109, 40, 0.2); color: var(--orange); }
+  .pr-chrono-event-type.merge_completed { background: rgba(63, 185, 80, 0.2); color: var(--green); }
+  .pr-chrono-event-type.revision_started { background: rgba(210, 153, 34, 0.2); color: var(--yellow); }
+  .pr-chrono-event-type.pr_status_changed { background: rgba(139, 148, 158, 0.15); color: var(--text-dim); }
+  .pr-chrono-event-type.fix_request { background: rgba(248, 81, 73, 0.2); color: var(--red); }
+  .pr-chrono-event-time {
+    color: var(--text-dim);
+    font-size: 10px;
+  }
+  .pr-chrono-event-details {
+    color: var(--text);
+    line-height: 1.4;
+  }
+  .pr-chrono-event-details code {
+    background: var(--bg3);
+    padding: 1px 4px;
+    border-radius: 2px;
+    font-size: 11px;
+  }
+  .pr-chrono-event-details .success { color: var(--green); }
+  .pr-chrono-event-details .failure { color: var(--red); }
+  .pr-chrono-event-details .duration { color: var(--text-dim); font-size: 10px; }
+  .pr-chrono-revision-marker {
+    font-weight: 600;
+    color: var(--accent);
+    margin: 16px 0 8px -24px;
+    padding: 4px 8px;
+    background: var(--bg3);
+    border-radius: 4px;
+    display: inline-block;
+    font-size: 11px;
+  }
+
+  .event-log-agent {
+    color: var(--accent);
+    cursor: pointer;
+  }
+  .event-log-agent:hover { text-decoration: underline; }
+  .event-log-msg {
+    color: var(--text);
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .event-log-msg.dim { color: var(--text-dim); }
+
+  /* Tab navigation */
+  .main-tabs {
+    display: flex;
+    gap: 0;
+    margin-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .main-tab {
+    padding: 10px 20px;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-dim);
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    transition: color 0.2s, border-color 0.2s;
+  }
+  .main-tab:hover {
+    color: var(--text);
+  }
+  .main-tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+
+  /* Issues tab markdown styling */
+  .issues-container {
+    padding: 1.5rem;
+    background: var(--surface);
+    border-radius: 8px;
+    line-height: 1.6;
+    font-size: 0.85rem;
+  }
+  .issues-container h1 {
+    color: var(--accent);
+    font-size: 1.25rem;
+    margin: 0 0 0.75rem 0;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .issues-container h2 {
+    color: var(--text);
+    font-size: 1rem;
+    margin: 1.25rem 0 0.5rem 0;
+  }
+  .issues-container h3 {
+    color: var(--text);
+    font-size: 1rem;
+    margin: 1rem 0 0.5rem 0;
+  }
+  .issues-container p {
+    margin: 0.5rem 0;
+    color: var(--text);
+  }
+  .issues-container ul {
+    margin: 0.5rem 0;
+    padding-left: 1.5rem;
+  }
+  .issues-container li {
+    margin: 0.35rem 0;
+    color: var(--text);
+  }
+  .issues-container li.task-list-item {
+    list-style: none;
+    margin-left: -1.5rem;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+  .issues-container input[type="checkbox"] {
+    margin-top: 0.3rem;
+    accent-color: var(--success);
+    width: 1rem;
+    height: 1rem;
+  }
+  .issues-container input[type="checkbox"]:checked + span,
+  .issues-container li.task-list-item:has(input:checked) {
+    color: var(--text-dim);
+  }
+  .issues-container code {
+    background: rgba(255,255,255,0.08);
+    padding: 0.15em 0.4em;
+    border-radius: 4px;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+    font-size: 0.9em;
+  }
+  .issues-container pre {
+    background: rgba(0,0,0,0.3);
+    padding: 1rem;
+    border-radius: 6px;
+    overflow-x: auto;
+  }
+  .issues-container pre code {
+    background: none;
+    padding: 0;
+  }
+  .issues-container a {
+    color: var(--accent);
+    text-decoration: none;
+  }
+  .issues-container a:hover {
+    text-decoration: underline;
+  }
+  .issues-container strong {
+    color: var(--text);
+    font-weight: 600;
+  }
+  .issues-container em {
+    font-style: italic;
+  }
+  .issues-container blockquote {
+    border-left: 3px solid var(--accent);
+    margin: 1rem 0;
+    padding-left: 1rem;
+    color: var(--text-dim);
+  }
+
+  /* Issue expanders */
+  .issue-expander {
+    margin-bottom: 1rem;
+  }
+  .issue-expander-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    padding: 0.5rem 0;
+    user-select: none;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 0.5rem;
+  }
+  .issue-expander-header:hover {
+    background: rgba(255, 255, 255, 0.03);
+  }
+  .issue-expander-toggle {
+    font-size: 0.7rem;
+    color: var(--muted);
+    transition: transform 0.2s;
+    display: inline-block;
+    width: 1rem;
+    text-align: center;
+  }
+  .issue-expander.collapsed .issue-expander-toggle {
+    transform: rotate(-90deg);
+  }
+  .issue-expander-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex: 1;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .issue-expander-count {
+    color: var(--muted);
+    font-weight: normal;
+    font-size: 0.9rem;
+  }
+  .issue-expander-content {
+    overflow: hidden;
+    transition: max-height 0.3s ease-out;
+  }
+  .issue-expander.collapsed .issue-expander-content {
+    max-height: 0;
+  }
+
+  /* Issue cards */
+  .issues-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+  }
+  .issues-list.closed {
+    opacity: 0.7;
+  }
+  .issue-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+    transition: background 0.15s;
+    font-size: 0.8rem;
+  }
+  .issue-card:hover {
+    background: rgba(255, 255, 255, 0.06);
+  }
+  .issue-card.issue-open {
+    border-left: 3px solid var(--warning);
+  }
+  .issue-card.issue-closed {
+    border-left: 3px solid var(--success);
+  }
+  .issue-card .issue-header {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    cursor: pointer;
+    user-select: none;
+    flex-wrap: wrap;
+  }
+  .issue-card-toggle {
+    font-size: 0.6rem;
+    color: var(--muted);
+    transition: transform 0.2s;
+    display: inline-block;
+    width: 0.8rem;
+    flex-shrink: 0;
+  }
+  .issue-card:not(.collapsed) .issue-card-toggle {
+    transform: rotate(90deg);
+  }
+  .issue-card .issue-id {
+    flex-shrink: 0;
+  }
+  .issue-card .issue-origin {
+    flex-shrink: 0;
+  }
+  .issue-preview {
+    color: var(--text-dim);
+    font-size: 0.75rem;
+    margin-left: 0.5rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+  }
+  .issue-card:not(.collapsed) .issue-preview {
+    display: none;
+  }
+  .issue-card .issue-description {
+    transition: max-height 0.3s ease-out, opacity 0.2s, margin-top 0.2s;
+    overflow: hidden;
+  }
+  .issue-card.collapsed .issue-description {
+    max-height: 0;
+    opacity: 0;
+    margin-top: 0;
+  }
+  .issue-card:not(.collapsed) .issue-description {
+    margin-top: 0.5rem;
+    opacity: 1;
+  }
+  .issue-id {
+    font-weight: 600;
+    color: var(--accent);
+    font-family: 'SF Mono', Monaco, monospace;
+    font-size: 0.75rem;
+  }
+  .issue-chapter {
+    font-size: 0.7rem;
+    color: var(--muted);
+    background: rgba(255, 255, 255, 0.08);
+    padding: 0.1rem 0.3rem;
+    border-radius: 3px;
+    font-family: 'SF Mono', Monaco, monospace;
+  }
+  .issue-origin {
+    font-size: 0.7rem;
+    color: var(--muted);
+    font-style: italic;
+  }
+  .issue-description {
+    color: var(--text);
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+  .issue-closed .issue-description {
+    text-decoration: line-through;
+    color: var(--muted);
+  }
+  /* Markdown styling within issue descriptions */
+  .issue-description p {
+    margin: 0.5em 0;
+  }
+  .issue-description p:first-child {
+    margin-top: 0;
+  }
+  .issue-description p:last-child {
+    margin-bottom: 0;
+  }
+  .issue-description ul,
+  .issue-description ol {
+    margin: 0.5em 0;
+    padding-left: 1.5em;
+  }
+  .issue-description li {
+    margin: 0.25em 0;
+  }
+  .issue-description code {
+    background: rgba(110, 118, 129, 0.3);
+    padding: 0.15em 0.4em;
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+  }
+  .issue-description pre {
+    background: var(--bg3);
+    padding: 0.75em 1em;
+    border-radius: 6px;
+    overflow-x: auto;
+    margin: 0.5em 0;
+    white-space: pre;
+  }
+  .issue-description pre code {
+    background: none;
+    padding: 0;
+    font-size: 0.85em;
+  }
+  .issue-description strong {
+    font-weight: 600;
+    color: var(--text);
+  }
+  .issue-description em {
+    font-style: italic;
+  }
+  .issue-description table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 0.5em 0;
+    font-size: 0.9em;
+  }
+  .issue-description th,
+  .issue-description td {
+    border: 1px solid var(--border);
+    padding: 0.4em 0.6em;
+    text-align: left;
+  }
+  .issue-description th {
+    background: var(--bg3);
+    font-weight: 600;
+  }
+  .issue-description blockquote {
+    border-left: 3px solid var(--accent);
+    margin: 0.5em 0;
+    padding-left: 1em;
+    color: var(--text-dim);
+  }
+  .issue-description h1,
+  .issue-description h2,
+  .issue-description h3,
+  .issue-description h4 {
+    margin: 0.75em 0 0.25em 0;
+    font-weight: 600;
+  }
+  .issue-description h1 { font-size: 1.1em; }
+  .issue-description h2 { font-size: 1em; }
+  .issue-description h3 { font-size: 0.95em; }
+  .issue-description h4 { font-size: 0.9em; }
+</style>
+</head>
+<body>
+<!-- Top Bar -->
+<header class="topbar" id="topbar">
+  <h1><a href="#" onclick="navigateTo('main'); return false;">Repoprover Viewer</a></h1>
+  <div class="breadcrumb" id="breadcrumb"></div>
+  <div class="file-input" id="runSelectorContainer">
+    <select id="runSelector" onchange="selectRun(this.value)">
+      <option value="">— Select a run —</option>
+    </select>
+    <button onclick="loadRunList()">↻ Refresh</button>
+  </div>
+  <div class="status">
+    <span class="dot" id="statusDot"></span>
+    <span id="statusText">Disconnected</span>
+  </div>
+</header>
+
+<main class="container" id="mainContent">
+  <div class="empty-state" id="emptyState">
+    <h2>No run selected</h2>
+    <p>Select a run from the dropdown above to view the trajectory</p>
+  </div>
+</main>
+
+<script>
+// ─── State ───────────────────────────────────────────────────────
+let currentRun = null;
+let sessionData = null;
+let agentsData = [];
+let ws = null;
+let currentPage = 'main'; // 'main', 'dialog', 'pr', 'logs'
+let mainTab = 'agents'; // 'agents', 'prs', 'timeline', 'issues'
+let currentAgentId = null;
+let agentDialogCache = {};
+
+// ─── API Helpers ─────────────────────────────────────────────────
+async function fetchJson(url) {
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  return resp.json();
+}
+
+async function fetchText(url) {
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  return resp.text();
+}
+
+// ─── Navigation ──────────────────────────────────────────────────
+function navigateTo(page, agentId = null) {
+  currentPage = page;
+  currentAgentId = agentId;
+
+  // Update URL hash without triggering reload
+  if (page === 'main') {
+    history.pushState(null, '', currentRun ? `?path=${encodeURIComponent(currentRun)}` : '?');
+  } else if (page === 'dialog' && agentId) {
+    history.pushState(null, '', `?path=${encodeURIComponent(currentRun)}&page=dialog&agent=${encodeURIComponent(agentId)}`);
+  } else if (page === 'pr' && agentId) {
+    history.pushState(null, '', `?path=${encodeURIComponent(currentRun)}&page=pr&agent=${encodeURIComponent(agentId)}`);
+  } else if (page === 'logs') {
+    history.pushState(null, '', `?path=${encodeURIComponent(currentRun)}&page=logs`);
+  }
+
+  renderCurrentPage();
+}
+
+function renderCurrentPage() {
+  if (!currentRun || !sessionData) {
+    showEmptyState();
+    return;
+  }
+
+  switch (currentPage) {
+    case 'dialog':
+      renderDialogPage(currentAgentId);
+      break;
+    case 'pr':
+      renderPRPage(currentAgentId);
+      break;
+    case 'logs':
+      renderLogsPage();
+      break;
+    default:
+      renderMainPage();
+  }
+}
+
+// ─── Run List ────────────────────────────────────────────────────
+async function loadRunList() {
+  try {
+    const runs = await fetchJson('/list');
+    const selector = document.getElementById('runSelector');
+    selector.innerHTML = '<option value="">— Select a run —</option>';
+
+    for (const run of runs) {
+      const opt = document.createElement('option');
+      opt.value = run.path;
+      const date = new Date(run.mtime * 1000).toLocaleString();
+      const stats = run.stats || {};
+      const status = stats.status || 'unknown';
+      opt.textContent = `${run.path} (${date}) [${status}]`;
+      selector.appendChild(opt);
+    }
+  } catch (e) {
+    console.error('Failed to load run list:', e);
+  }
+}
+
+function selectRun(path) {
+  if (!path) {
+    showEmptyState();
+    return;
+  }
+  currentRun = path;
+  agentsData = [];
+  agentDialogCache = {};
+  currentPage = 'main';
+  currentAgentId = null;
+  // Update URL to reflect selected run
+  history.pushState(null, '', `?path=${encodeURIComponent(path)}`);
+  loadSession(path);
+  connectWebSocket(path);
+}
+
+// ─── Session Loading ─────────────────────────────────────────────
+async function loadSession(path) {
+  try {
+    sessionData = await fetchJson(`/session?path=${encodeURIComponent(path)}`);
+    // Override issue counts with live data from issues/ folder
+    try {
+      const issues = await fetchJson('/issues');
+      if (sessionData && sessionData.stats) {
+        sessionData.stats.open_issues = (issues.open || []).length;
+        sessionData.stats.closed_issues = (issues.closed || []).length;
+      }
+    } catch (_) { /* issues endpoint optional */ }
+    await loadAgentsData();
+    renderCurrentPage();
+  } catch (e) {
+    console.error('Failed to load session:', e);
+    showError('Failed to load session: ' + e.message);
+  }
+}
+
+async function loadAgentsData() {
+  if (!currentRun) return;
+  try {
+    agentsData = await fetchJson(`/agents?path=${encodeURIComponent(currentRun)}`);
+  } catch (e) {
+    console.error('Failed to load agents:', e);
+    agentsData = [];
+  }
+}
+
+async function refreshLiveIssues() {
+  if (!sessionData || !sessionData.stats) return;
+  try {
+    const issues = await fetchJson('/issues');
+    sessionData.stats.open_issues = (issues.open || []).length;
+    sessionData.stats.closed_issues = (issues.closed || []).length;
+  } catch (_) { /* issues endpoint optional */ }
+}
+
+// ─── WebSocket ───────────────────────────────────────────────────
+function connectWebSocket(path) {
+  if (ws) {
+    ws.close();
+  }
+
+  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${protocol}//${location.host}/ws?path=${encodeURIComponent(path)}`);
+
+  ws.onopen = () => {
+    setStatus('live', 'Live');
+  };
+
+  ws.onmessage = async (event) => {
+    const data = JSON.parse(event.data);
+    if (data.type === 'update') {
+      // Update session data incrementally
+      if (sessionData && data.new_events) {
+        const existingTimestamps = new Set(sessionData.events.map(e => e.ts));
+        const newEvents = data.new_events.filter(e => !existingTimestamps.has(e.ts));
+        if (newEvents.length > 0) {
+          sessionData.events.push(...newEvents);
+        }
+        // Preserve live issue counts from /issues endpoint (don't overwrite with stale session stats)
+        const liveOpenIssues = sessionData.stats?.open_issues;
+        const liveClosedIssues = sessionData.stats?.closed_issues;
+        sessionData.stats = data.stats;
+        // Restore live counts if we had them
+        if (liveOpenIssues !== undefined) sessionData.stats.open_issues = liveOpenIssues;
+        if (liveClosedIssues !== undefined) sessionData.stats.closed_issues = liveClosedIssues;
+      }
+
+      // Refresh agents data and live issue counts
+      await loadAgentsData();
+      await refreshLiveIssues();
+
+      // Only update specific parts of the UI, not full re-render
+      updateUIIncrementally();
+    } else if (data.type === 'waiting') {
+      setStatus('stale', data.message);
+    } else if (data.type === 'error') {
+      console.error('WS error:', data.message);
+    }
+  };
+
+  ws.onclose = () => {
+    setStatus('dead', 'Disconnected');
+  };
+
+  ws.onerror = () => {
+    setStatus('dead', 'Error');
+  };
+}
+
+function updateUIIncrementally() {
+  // Update stats row without touching anything else
+  const statsRow = document.querySelector('.stats-row');
+  if (statsRow && sessionData) {
+    const newStats = createStatsRow(sessionData.stats);
+    statsRow.innerHTML = newStats.innerHTML;
+  }
+
+  // Update based on current page
+  if (currentPage === 'main') {
+    updateAgentsTable();
+  } else if (currentPage === 'logs') {
+    updateEventLog();
+  }
+}
+
+function updateEventLog() {
+  const logContainer = document.getElementById('eventLog');
+  if (!logContainer || !sessionData) return;
+
+  // Re-render the event log content
+  const newLog = renderEventLog(sessionData.events);
+  logContainer.innerHTML = newLog.innerHTML;
+}
+
+function updateAgentsTable() {
+  const tbody = document.querySelector('.agents-table tbody');
+  if (!tbody) return;
+
+  // Filter out reviewer agents - they are auxiliary agents that should not appear in main list
+  const contributorAgents = agentsData ? agentsData.filter(a => !a.type.includes('reviewer')) : [];
+
+  // Build a map of existing rows
+  const existingRows = new Map();
+  tbody.querySelectorAll('tr').forEach(tr => {
+    const id = tr.dataset.agentId;
+    if (id) existingRows.set(id, tr);
+  });
+
+  // Update or add rows
+  for (const agent of contributorAgents) {
+    const existingRow = existingRows.get(agent.id);
+    if (existingRow) {
+      // Update existing row in place
+      updateAgentRow(existingRow, agent);
+      existingRows.delete(agent.id);
+    } else {
+      // Add new row
+      const newRow = createAgentRow(agent);
+      tbody.appendChild(newRow);
+    }
+  }
+
+  // Remove rows that are no longer in the data
+  for (const [id, row] of existingRows) {
+    row.remove();
+  }
+}
+
+function updateAgentRow(row, agent) {
+  // Update status
+  const statusCell = row.querySelector('.agent-status');
+  if (statusCell) {
+    statusCell.className = `agent-status status-${agent.status}`;
+    statusCell.textContent = agent.status;
+  }
+
+  // Update PR status
+  const prStatusCell = row.querySelector('.pr-status');
+  if (prStatusCell) {
+    const effectiveStatus = getEffectivePRStatus(agent);
+    prStatusCell.className = `pr-status pr-status-${effectiveStatus || 'none'}`;
+    prStatusCell.textContent = effectiveStatus || '—';
+  }
+
+  // Update iterations
+  const iterCell = row.querySelector('.iterations');
+  if (iterCell) {
+    iterCell.textContent = agent.iterations ?? '—';
+  }
+
+  // Update runtime
+  const runtimeCell = row.querySelector('.runtime');
+  if (runtimeCell) {
+    runtimeCell.textContent = formatAgentRuntime(agent);
+  }
+
+  // Update diff stats
+  const diffStatsCell = row.querySelector('.diff-stats');
+  if (diffStatsCell) {
+    diffStatsCell.innerHTML = formatDiffStats(agent);
+  }
+
+  // Update review pills
+  const reviewCell = row.querySelector('.review-pills-cell');
+  if (reviewCell) {
+    reviewCell.innerHTML = renderReviewPills(agent.review, agent.review?.pr_id);
+  }
+}
+
+function createAgentRow(agent) {
+  const row = document.createElement('tr');
+  row.dataset.agentId = agent.id;
+  row.innerHTML = `
+    <td>
+      <span class="agent-id">${escapeHtml(agent.id)}</span>
+    </td>
+    <td class="agent-type type-${agent.type}">${escapeHtml(agent.type)}</td>
+    <td><span class="agent-status status-${agent.status}">${agent.status}</span></td>
+    <td><span class="pr-status pr-status-${getEffectivePRStatus(agent) || 'none'}">${getEffectivePRStatus(agent) || '—'}</span></td>
+    <td class="iterations">${agent.iterations ?? '—'}</td>
+    <td class="runtime">${formatAgentRuntime(agent)}</td>
+    <td class="diff-stats">${formatDiffStats(agent)}</td>
+    <td class="review-pills-cell">${renderReviewPills(agent.review, agent.review?.pr_id)}</td>
+    <td class="actions">
+      <a href="#" onclick="navigateTo('dialog', '${escapeHtml(agent.id)}'); return false;" class="primary">Dialog</a>
+      <a href="#" onclick="navigateTo('pr', '${escapeHtml(agent.id)}'); return false;">PR</a>
+    </td>
+  `;
+  return row;
+}
+
+function setStatus(state, text) {
+  const dot = document.getElementById('statusDot');
+  const txt = document.getElementById('statusText');
+  dot.className = 'dot ' + state;
+  txt.textContent = text;
+}
+
+// ─── Rendering: Main Page ────────────────────────────────────────
+function showEmptyState() {
+  document.getElementById('mainContent').innerHTML = `
+    <div class="empty-state" id="emptyState">
+      <h2>No run selected</h2>
+      <p>Select a run from the dropdown above to view the trajectory</p>
+    </div>
+  `;
+  document.getElementById('breadcrumb').innerHTML = '';
+  currentRun = null;
+  sessionData = null;
+  if (ws) ws.close();
+  setStatus('dead', 'Disconnected');
+}
+
+function showError(msg) {
+  document.getElementById('mainContent').innerHTML = `
+    <div class="empty-state">
+      <h2>Error</h2>
+      <p>${escapeHtml(msg)}</p>
+    </div>
+  `;
+}
+
+function switchMainTab(tab) {
+  mainTab = tab;
+  renderMainPage();
+}
+
+function renderMainPage() {
+  if (!sessionData) return;
+
+  document.getElementById('breadcrumb').innerHTML = '';
+
+  const main = document.getElementById('mainContent');
+  const statsRow = createStatsRow(sessionData.stats);
+
+  main.innerHTML = '';
+  main.appendChild(statsRow);
+
+  // Tab navigation
+  const eventCount = sessionData.events ? sessionData.events.filter(e => ['session_start', 'session_end', 'agent_launched', 'agent_start', 'agent_done', 'agent_error', 'review_launched', 'review_completed', 'build_completed', 'revision_started', 'pr_submitted', 'merge_completed', 'merge_conflict_detected', 'iteration', 'escalation', 'fix_request', 'max_iterations'].includes(e.event)).length : 0;
+  const contributorAgentCount = agentsData ? agentsData.filter(a => !a.type.includes('reviewer')).length : 0;
+// Count PRs for the tab
+  const prData = getPRTimelineData();
+  const prCount = prData.approvedUnmerged.length + prData.merged.length + prData.pending.length;
+
+  const tabs = document.createElement('div');
+  tabs.className = 'main-tabs';
+  tabs.innerHTML = `
+    <button class="main-tab ${mainTab === 'agents' ? 'active' : ''}" onclick="switchMainTab('agents')">Agents (${contributorAgentCount})</button>
+    <button class="main-tab ${mainTab === 'prs' ? 'active' : ''}" onclick="switchMainTab('prs')">PRs (${prCount})</button>
+    <button class="main-tab ${mainTab === 'timeline' ? 'active' : ''}" onclick="switchMainTab('timeline')">Timeline (${eventCount})</button>
+    <button class="main-tab ${mainTab === 'issues' ? 'active' : ''}" onclick="switchMainTab('issues')">Issues</button>
+  `;
+  main.appendChild(tabs);
+
+  if (mainTab === 'agents') {
+    renderAgentsTab(main);
+  } else if (mainTab === 'prs') {
+    renderPRsTab(main);
+  } else if (mainTab === 'issues') {
+    renderIssuesTab(main);
+  } else {
+    renderTimelineTab(main);
+  }
+}
+
+function renderAgentsTab(main) {
+  const section = document.createElement('div');
+
+  // Filter out reviewer agents - they are auxiliary agents that should not appear in main list
+  const contributorAgents = agentsData ? agentsData.filter(a => !a.type.includes('reviewer')) : [];
+
+  if (contributorAgents.length === 0) {
+    section.innerHTML = `
+      <div class="empty-state"><p>No agents registered</p></div>
+    `;
+  } else {
+    const table = document.createElement('table');
+    table.className = 'agents-table';
+    table.innerHTML = `
+        <thead>
+          <tr>
+            <th>Agent ID</th>
+            <th style="width: 80px;">Type</th>
+            <th style="width: 80px;">Status</th>
+            <th style="width: 100px;">PR Status</th>
+            <th style="width: 60px;">Turns</th>
+            <th style="width: 80px;">Runtime</th>
+            <th style="width: 70px;">±Lines</th>
+            <th>Review</th>
+            <th style="width: 100px;">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${contributorAgents.map(agent => `
+            <tr data-agent-id="${escapeHtml(agent.id)}">
+              <td>
+                <span class="agent-id">${escapeHtml(agent.id)}</span>
+              </td>
+              <td class="agent-type type-${agent.type}">${escapeHtml(agent.type)}</td>
+              <td><span class="agent-status status-${agent.status}">${agent.status}</span></td>
+              <td><span class="pr-status pr-status-${getEffectivePRStatus(agent) || 'none'}">${getEffectivePRStatus(agent) || '—'}</span></td>
+                <td class="iterations">${agent.iterations ?? '—'}</td>
+              <td class="runtime">${formatAgentRuntime(agent)}</td>
+              <td class="diff-stats">${formatDiffStats(agent)}</td>
+              <td class="review-pills-cell">${renderReviewPills(agent.review, agent.review?.pr_id)}</td>
+              <td class="actions">
+<a href="#" onclick="navigateTo('dialog', '${escapeHtml(agent.id)}'); return false;" class="primary">Dialog</a>
+                <a href="#" onclick="navigateTo('pr', '${escapeHtml(agent.id)}'); return false;">PR</a>
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      `;
+    section.appendChild(table);
+  }
+
+  main.appendChild(section);
+}
+
+function renderTimelineTab(main) {
+  const logContainer = renderEventLog(sessionData.events);
+  logContainer.style.maxHeight = 'none';
+  main.appendChild(logContainer);
+}
+
+let issuesCache = null;
+
+async function renderIssuesTab(main) {
+  const container = document.createElement('div');
+  container.className = 'issues-container';
+
+  if (issuesCache !== null) {
+    container.innerHTML = renderIssuesContent(issuesCache);
+    main.appendChild(container);
+    return;
+  }
+
+  container.innerHTML = '<div style="color: var(--muted); padding: 2rem; text-align: center;"><span class="status-icon status-in_progress">⏳</span> Loading issues...</div>';
+  main.appendChild(container);
+
+  try {
+    const response = await fetch('/issues');
+    if (!response.ok) {
+      throw new Error(`Failed to load issues: ${response.statusText}`);
+    }
+    const data = await response.json();
+    issuesCache = data;
+    container.innerHTML = renderIssuesContent(data);
+  } catch (error) {
+    // Fallback: try to render raw markdown
+    container.innerHTML = `<div style="color: var(--error); padding: 2rem; text-align: center;">❌ ${error.message}</div>`;
+  }
+}
+
+function renderIssuesContent(data) {
+  const { open, closed, raw } = data;
+
+  // If parsing failed, fall back to raw markdown
+  if ((!open || open.length === 0) && (!closed || closed.length === 0)) {
+    if (raw) {
+      return renderMarkdown(raw);
+    }
+    return '<p style="color: var(--muted); padding: 2rem; text-align: center;">No issues found.</p>';
+  }
+
+  let html = '<h1>Issues</h1>';
+  html += '<p style="color: var(--muted); margin-bottom: 1.5rem;">Each issue is a .yaml file in the issues/ folder. Close by changing status: open to status: closed.</p>';
+
+  // Open Issues section with expander
+  html += '<div class="issue-expander" id="open-issues-expander">';
+  html += '<div class="issue-expander-header" onclick="toggleIssueExpander(\'open-issues-expander\')">';
+  html += '<span class="issue-expander-toggle">▼</span>';
+  html += '<span class="issue-expander-title"><span style="color: var(--warning);">⬜</span> Open Issues <span class="issue-expander-count">(' + open.length + ')</span></span>';
+  html += '</div>';
+  html += '<div class="issue-expander-content">';
+
+  if (open.length === 0) {
+    html += '<p style="color: var(--success); padding: 1rem; background: rgba(46, 160, 67, 0.1); border-radius: 6px;">🎉 No open issues!</p>';
+  } else {
+    html += '<div class="issues-list">';
+    for (const issue of open) {
+      html += renderIssueCard(issue, true);
+    }
+    html += '</div>';
+  }
+  html += '</div></div>';
+
+  // Closed Issues section with expander (collapsed by default)
+  if (closed.length > 0) {
+    html += '<div class="issue-expander collapsed" id="closed-issues-expander">';
+    html += '<div class="issue-expander-header" onclick="toggleIssueExpander(\'closed-issues-expander\')">';
+    html += '<span class="issue-expander-toggle">▼</span>';
+    html += '<span class="issue-expander-title"><span style="color: var(--success);">✅</span> Closed Issues <span class="issue-expander-count">(' + closed.length + ')</span></span>';
+    html += '</div>';
+    html += '<div class="issue-expander-content">';
+    html += '<div class="issues-list closed">';
+    for (const issue of closed) {
+      html += renderIssueCard(issue, false);
+    }
+    html += '</div>';
+    html += '</div></div>';
+  }
+
+  return html;
+}
+
+function toggleIssueExpander(expanderId) {
+  const expander = document.getElementById(expanderId);
+  if (expander) {
+    expander.classList.toggle('collapsed');
+  }
+}
+
+function renderIssueCard(issue, isOpen) {
+  const statusClass = isOpen ? 'issue-open' : 'issue-closed';
+  const issueCardId = `issue-card-${escapeHtml(issue.id)}`;
+
+  // Extract first line for preview
+  const descText = issue.description || '';
+  const firstLine = descText.split('\n').find(line => line.trim()) || '';
+  const preview = firstLine.length > 120 ? firstLine.slice(0, 120) + '...' : firstLine;
+
+  return `
+    <div class="issue-card ${statusClass} collapsed" id="${issueCardId}">
+      <div class="issue-header" onclick="toggleIssueCard('${issueCardId}')">
+        <span class="issue-card-toggle">▶</span>
+        <span class="issue-id">${escapeHtml(issue.id)}</span>
+        <span class="issue-origin">${escapeHtml(issue.origin)}</span>
+        <span class="issue-preview">${escapeHtml(preview)}</span>
+      </div>
+      <div class="issue-description">${renderMarkdown(issue.description)}</div>
+    </div>
+  `;
+}
+
+function toggleIssueCard(cardId) {
+  const card = document.getElementById(cardId);
+  if (card) {
+    card.classList.toggle('collapsed');
+  }
+}
+
+function isEmptyPR(pr) {
+    const diffStats = pr.submission?.diff_stats || pr.merge?.diff_stats || {};
+    return (diffStats['+'] || 0) === 0 && (diffStats['-'] || 0) === 0;
+}
+
+function isEmptyAgent(agent) {
+    const diffStats = agent.diff_stats || {};
+    return (diffStats['+'] || 0) === 0 && (diffStats['-'] || 0) === 0;
+}
+
+function getEffectivePRStatus(agent) {
+    const status = agent.pr_status;
+    if (status === 'merged' && isEmptyAgent(agent)) {
+        return 'empty';
+    }
+    return status;
+}
+
+function getPRTimelineData() {
+    if (!sessionData || !sessionData.events) return { approvedUnmerged: [], merged: [], pending: [] };
+
+  // Find all PR submissions with their related data
+  const prSubmissions = sessionData.events.filter(e => e.event === 'pr_submitted');
+  const mergeEvents = sessionData.events.filter(e => e.event === 'merge_completed');
+  const reviewEvents = sessionData.events.filter(e => e.event === 'review_completed');
+
+  // Build PR data indexed by pr_id (the shared identifier across events)
+  const prMap = new Map();
+
+  for (const sub of prSubmissions) {
+    const key = sub.pr_id;
+    if (!key) continue;
+    if (!prMap.has(key)) {
+      prMap.set(key, {
+        agentId: sub.agent_id,
+        revisionNumber: sub.revision_number || 0,
+        submission: sub,
+        review: null,
+        merge: null,
+        agent: agentsData?.find(a => a.id === sub.agent_id)
+      });
+    } else {
+      prMap.get(key).submission = sub;
+    }
+  }
+
+  for (const rev of reviewEvents) {
+    const key = rev.pr_id;
+    if (!key) continue;
+    if (!prMap.has(key)) {
+      prMap.set(key, {
+        agentId: rev.agent_id,
+        revisionNumber: rev.revision_number || 0,
+        submission: null,
+        review: rev,
+        merge: null,
+        agent: agentsData?.find(a => a.id === rev.agent_id)
+      });
+    } else {
+      prMap.get(key).review = rev;
+    }
+  }
+
+  for (const mrg of mergeEvents) {
+    const key = mrg.pr_id;
+    if (!key) continue;
+    if (prMap.has(key)) {
+      prMap.get(key).merge = mrg;
+    }
+  }
+
+  const prData = Array.from(prMap.values());
+  const approvedUnmerged = prData.filter(pr =>
+    pr.review?.combined_verdict === 'approve' && !pr.merge
+  );
+
+  // Show all successfully merged PRs, excluding empty PRs (+0 -0)
+  const merged = prData.filter(pr => pr.merge?.success && !isEmptyPR(pr));
+
+  // For pending, only show the LATEST revision per agent (older revisions are superseded)
+  const pendingAll = prData.filter(pr =>
+    !pr.merge?.success && pr.review?.combined_verdict !== 'approve'
+  );
+  // Group by agentId and keep only the highest revision number
+  const latestByAgent = new Map();
+  for (const pr of pendingAll) {
+    const existing = latestByAgent.get(pr.agentId);
+    if (!existing || pr.revisionNumber > existing.revisionNumber) {
+      latestByAgent.set(pr.agentId, pr);
+    }
+  }
+  const pending = Array.from(latestByAgent.values());
+
+  // Sort each category by time (most recent first for merged, oldest first for pending)
+  const getTime = (pr) => new Date(pr.submission?.ts || pr.review?.ts || 0).getTime();
+  approvedUnmerged.sort((a, b) => getTime(b) - getTime(a));
+  merged.sort((a, b) => {
+    const mergeTimeA = new Date(a.merge?.ts || 0).getTime();
+    const mergeTimeB = new Date(b.merge?.ts || 0).getTime();
+    return mergeTimeB - mergeTimeA; // Most recent first
+  });
+  pending.sort((a, b) => getTime(b) - getTime(a));
+
+  return { approvedUnmerged, merged, pending };
+}
+
+function renderPRsTab(main) {
+    const { approvedUnmerged, merged, pending } = getPRTimelineData();
+
+    const section = document.createElement('div');
+    section.className = 'pr-timeline';
+
+  // Approved but unmerged section (highlighted at top)
+  if (approvedUnmerged.length > 0) {
+    section.innerHTML += `
+      <div class="pr-timeline-section">
+        <div class="pr-timeline-section-header">✓ Ready to Merge (${approvedUnmerged.length})</div>
+        ${approvedUnmerged.map(pr => renderPRCard(pr, 'approved')).join('')}
+      </div>
+    `;
+  }
+
+  // Merged section (chronological)
+  if (merged.length > 0) {
+    section.innerHTML += `
+      <div class="pr-timeline-section">
+        <div class="pr-timeline-section-header">✓ Merged (${merged.length})</div>
+        ${merged.map(pr => renderPRCard(pr, 'merged')).join('')}
+      </div>
+    `;
+  }
+
+  // Pending/In Review section
+  if (pending.length > 0) {
+    section.innerHTML += `
+      <div class="pr-timeline-section">
+        <div class="pr-timeline-section-header">⋯ In Progress (${pending.length})</div>
+        ${pending.map(pr => renderPRCard(pr, 'pending')).join('')}
+      </div>
+    `;
+  }
+
+  main.appendChild(section);
+
+  // Load diff content for expanded cards
+  loadPRDiffs();
+}
+
+function renderPRCard(pr, status) {
+  // Use base64 encoding for agent ID to avoid issues with special characters
+  // Use encodeURIComponent + unescape trick to handle UTF-8 characters safely
+  const agentIdStr = String(pr.agentId || 'unknown');
+  const safeAgentId = btoa(unescape(encodeURIComponent(agentIdStr))).replace(/=/g, '_');
+  const cardId = `pr-card-${safeAgentId}-${pr.revisionNumber}`;
+  const agent = pr.agent;
+  const submission = pr.submission;
+  const review = pr.review;
+  const merge = pr.merge;
+
+  // Store diff info for later retrieval (avoids lookup issues)
+  const diffData = submission ? {
+    diff: submission.diff || null,
+    diff_file: submission.diff_file || null
+  } : null;
+  const diffDataAttr = diffData ? escapeHtml(JSON.stringify(diffData)) : '';
+
+  // Title and info
+  const title = agent?.id || pr.agentId || 'Unknown Agent';
+  const agentType = agent?.type || '';
+  const revLabel = pr.revisionNumber > 0 ? `Rev ${pr.revisionNumber}` : 'Initial';
+
+  // Status icon
+  let statusIcon = '⋯';
+  if (status === 'merged') statusIcon = '✓';
+  else if (status === 'approved') statusIcon = '✓';
+
+  // Time display
+  let timeDisplay = '';
+  if (merge?.success && merge?.ts) {
+    timeDisplay = `Merged ${formatRelativeTime(merge.ts)}`;
+  } else if (review?.ts) {
+    timeDisplay = `Reviewed ${formatRelativeTime(review.ts)}`;
+  } else if (submission?.ts) {
+    timeDisplay = `Submitted ${formatRelativeTime(submission.ts)}`;
+  }
+
+  // Diff stats
+  const diffStats = submission?.diff_stats || {};
+  const additions = diffStats['+'] || 0;
+  const deletions = diffStats['-'] || 0;
+
+  // Review verdict display
+  let verdictHtml = '';
+  if (review) {
+    const verdict = review.combined_verdict;
+    const verdictClass = verdict === 'approve' ? 'green' : verdict === 'reject' ? 'red' : 'yellow';
+    verdictHtml = `<span style="color: var(--${verdictClass});">${verdict}</span>`;
+  }
+
+  // Build review pills for expanded view
+  const reviewPillsHtml = renderReviewPills(review, review?.pr_id);
+
+  return `
+      <div class="pr-card ${status}" id="${cardId}" data-diff="${diffDataAttr}">
+        <div class="pr-card-header" onclick="togglePRCard('${cardId}', event)">
+        <span class="pr-card-status-icon ${status}">${statusIcon}</span>
+        <div class="pr-card-info">
+          <div class="pr-card-title">${escapeHtml(title)}</div>
+          <div class="pr-card-meta">
+            <span>${escapeHtml(agentType)}</span>
+            <span>•</span>
+            <span>${revLabel}</span>
+            ${verdictHtml ? `<span>•</span>${verdictHtml}` : ''}
+          </div>
+        </div>
+        <div class="pr-card-stats">
+          <span style="color: var(--green);">+${additions}</span>
+          <span style="color: var(--red);">-${deletions}</span>
+        </div>
+        <span class="pr-card-time">${timeDisplay}</span>
+        <span class="pr-card-expand-icon">▶</span>
+      </div>
+      <div class="pr-card-body">
+        ${reviewPillsHtml ? `
+          <div class="pr-card-section">
+            <div class="pr-card-section-title">Reviews</div>
+            <div class="pr-card-review-pills">${reviewPillsHtml}</div>
+          </div>
+        ` : ''}
+        <div class="pr-card-section">
+          <div class="pr-card-section-title">Diff</div>
+          <div id="${cardId}-diff" class="pr-card-diff-content">
+            <div class="empty-state" style="padding: 20px;"><p>Loading diff...</p></div>
+          </div>
+        </div>
+        <div class="pr-card-section" style="margin-top: 12px;">
+          <a href="#" onclick="navigateTo('pr', '${escapeHtml(pr.agentId)}'); return false;" class="btn btn-secondary" style="font-size: 12px;">View Full PR Details →</a>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function togglePRCard(cardId, event) {
+  if (event) {
+    event.stopPropagation();
+    event.preventDefault();
+  }
+  const card = document.getElementById(cardId);
+  if (card) {
+    const wasExpanded = card.classList.contains('expanded');
+    card.classList.toggle('expanded');
+
+    // Load diff if expanding and not already loaded
+    if (!wasExpanded) {
+      loadPRCardDiff(cardId);
+    }
+  }
+}
+
+async function loadPRCardDiff(cardId) {
+  const diffContainer = document.getElementById(`${cardId}-diff`);
+  if (!diffContainer || diffContainer.dataset.loaded === 'true') return;
+
+  // Get diff data directly from the card's data attribute (set during render)
+  const card = document.getElementById(cardId);
+  const diffDataAttr = card?.dataset.diff;
+
+  if (!diffDataAttr) {
+    diffContainer.innerHTML = '<div class="empty-state" style="padding: 20px;"><p>No diff available</p></div>';
+    diffContainer.dataset.loaded = 'true';
+    return;
+  }
+
+  try {
+    const diffData = JSON.parse(diffDataAttr);
+
+    if (diffData.diff) {
+      // Inline diff
+      diffContainer.innerHTML = renderDiffContent(diffData.diff);
+    } else if (diffData.diff_file) {
+      // Load external diff file
+      const content = await fetchText(`/diff?path=${encodeURIComponent(currentRun)}&file=${encodeURIComponent(diffData.diff_file)}`);
+      diffContainer.innerHTML = renderDiffContent(content);
+    } else {
+      diffContainer.innerHTML = '<div class="empty-state" style="padding: 20px;"><p>No diff content</p></div>';
+    }
+    diffContainer.dataset.loaded = 'true';
+  } catch (e) {
+    diffContainer.innerHTML = `<div class="empty-state" style="padding: 20px;"><p>Error loading diff: ${escapeHtml(e.message)}</p></div>`;
+    diffContainer.dataset.loaded = 'true';
+  }
+}
+
+async function loadPRDiffs() {
+  // Pre-load diffs for any cards that are already expanded
+  const expandedCards = document.querySelectorAll('.pr-card.expanded');
+  for (const card of expandedCards) {
+    await loadPRCardDiff(card.id);
+  }
+}
+
+function formatRelativeTime(ts) {
+  if (!ts) return '';
+  try {
+    const date = new Date(ts);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString();
+  } catch {
+    return ts;
+  }
+}
+
+function renderLogsPage() {
+  document.getElementById('breadcrumb').innerHTML = `
+    <a href="#" onclick="navigateTo('main'); return false;">Overview</a> / Event Log
+  `;
+
+  const main = document.getElementById('mainContent');
+  main.innerHTML = `
+    <div class="page-header">
+      <a href="#" class="back-link" onclick="navigateTo('main'); return false;">← Back to overview</a>
+      <h2>≡ Event Log</h2>
+    </div>
+  `;
+
+  const logContainer = renderEventLog(sessionData.events);
+  logContainer.style.maxHeight = 'none'; // Remove height limit on dedicated page
+  main.appendChild(logContainer);
+}
+
+function renderEventLog(events) {
+  const div = document.createElement('div');
+  div.className = 'event-log';
+  div.id = 'eventLog';
+
+  if (!events || events.length === 0) {
+    div.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-dim);">No events</div>';
+    return div;
+  }
+
+  // Filter to only show significant events (not every message)
+  const significantEvents = events.filter(e => {
+    const type = e.event;
+    return ['session_start', 'session_end',
+            'agent_launched', 'agent_start', 'agent_done', 'agent_error',
+            'review_launched', 'review_completed', 'build_completed',
+            'revision_started', 'pr_submitted', 'merge_completed', 'merge_conflict_detected',
+            'iteration', 'escalation', 'fix_request', 'max_iterations'].includes(e.event);
+  });
+
+  // Show most recent first
+  const sortedEvents = [...significantEvents].reverse();
+
+  div.innerHTML = sortedEvents.map(e => renderEventLogEntry(e)).join('');
+  return div;
+}
+
+function renderEventLogEntry(event) {
+  const ts = formatLogTime(event.ts);
+  const type = event.event || 'unknown';
+  const agentId = event.agent_id || '';
+  const msg = getEventMessage(event);
+
+  const agentLink = agentId
+    ? `<span class="event-log-agent" onclick="navigateTo('dialog', '${escapeHtml(agentId)}'); return false;">${escapeHtml(agentId)}</span>`
+    : '';
+
+  return `
+    <div class="event-log-entry">
+      <span class="event-log-ts">${ts}</span>
+      <span class="event-log-type ${type}">${type.replace(/_/g, ' ')}</span>
+      ${agentLink}
+      <span class="event-log-msg ${msg ? '' : 'dim'}">${escapeHtml(msg) || '—'}</span>
+    </div>
+  `;
+}
+
+function getEventMessage(event) {
+  const type = event.event;
+  switch (type) {
+    case 'session_start':
+      return event.config?.task_id || event.task || 'Session started';
+    case 'agent_launched':
+        // Cross-chapter agents (maintain, triage, scan) may not have a chapter_id
+        const chapterId = event.chapter_id;
+        const agentType = event.agent_type || '?';
+        const theoremName = event.theorem_name;
+        const issueId = event.issue_id;
+        const isCrossChapter = ['maintain', 'triage', 'scan', 'progress'].includes(agentType);
+        const isReviewer = ['math_reviewer', 'engineering_reviewer'].includes(agentType);
+        const isProver = agentType === 'prove';
+        const isMaintain = agentType === 'maintain';
+        if (isReviewer) {
+          // Reviewers show their target PR
+          return `${agentType} → ${event.review_target || '?'}`;
+        }
+        if (isMaintain && issueId) {
+          // Maintain agents show issue ID
+          return `maintain → issue #${issueId}`;
+        }
+        if (isCrossChapter && !chapterId) {
+          return agentType;  // Just show agent type, no arrow
+        }
+        if (isProver) {
+          // Provers show theorem name (chapter_id may be empty)
+          return `prove → ${theoremName || chapterId || '?'}`;
+        }
+        return `${agentType} → ${chapterId || '?'}${theoremName ? ' (' + theoremName + ')' : ''}`;
+    case 'agent_start':
+      return `type=${event.agent_type || '?'}`;
+    case 'agent_done':
+      return event.result || 'completed';
+    case 'agent_error':
+      return event.error || 'error';
+    case 'review_launched':
+      return `pr=${event.pr_id || '?'}`;
+    case 'review_completed':
+      return event.combined_verdict || event.verdict || '';
+    case 'build_completed':
+      return `${event.context || '?'}: ${event.passed ? 'passed' : 'failed'}${event.duration_s ? ' (' + event.duration_s + 's)' : ''}${event.error ? ' — ' + event.error.slice(0, 80) : ''}`;
+    case 'revision_started':
+      return `pr=${event.pr_id || '?'} rev #${event.revision_number || '?'}`;
+    case 'pr_submitted':
+      return event.pr_url || 'submitted';
+    case 'merge_completed':
+      if (event.success) {
+        return event.commit_hash?.slice(0, 8) || 'success';
+      } else {
+        // Show failure reason + details
+        const reason = event.failure_reason;
+        if (reason === 'merge_conflict') {
+          return `conflict in: ${event.conflict_files?.join(', ') || 'unknown files'}`;
+        } else if (reason === 'build_failed') {
+          return `build failed${event.build_duration_s ? ' (' + event.build_duration_s.toFixed(1) + 's)' : ''}`;
+        } else if (reason === 'build_timeout') {
+          return 'build timeout';
+        } else {
+          return event.error || 'failed';
+        }
+      }
+    case 'merge_conflict_detected':
+      return `pr=${event.pr_id || '?'} conflicts: ${event.conflict_files?.join(', ') || 'unknown'}`;
+    case 'iteration':
+      return `#${event.iteration || '?'}`;
+    case 'escalation':
+      return event.reason || event.message || 'escalated';
+    case 'fix_request':
+      return event.theorem_name ? `for ${event.theorem_name}` : 'fix proposed';
+    case 'max_iterations':
+      return `reached ${event.max_iterations || '?'} iterations`;
+    case 'session_end':
+      return `${event.status || 'ended'}${event.error ? ' — ' + event.error.split('\n').pop().slice(0, 100) : ''}`;
+    default:
+      return event.message || '';
+  }
+}
+
+function formatLogTime(ts) {
+  if (!ts) return '—';
+  try {
+    const d = new Date(ts);
+    return d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  } catch {
+    return ts;
+  }
+}
+
+function createStatsRow(stats) {
+    const duration = stats.duration_seconds
+    ? formatDuration(stats.duration_seconds)
+    : '—';
+
+  // Compute non-empty merged PRs count from PR data
+  const prData = getPRTimelineData();
+  const nonEmptyMergedCount = prData.merged.length;
+
+  let agentsDisplay = `<span class="value accent">${stats.agents}</span>`;
+  if (stats.agents_done > 0 || stats.agents_error > 0) {
+    const parts = [];
+    // agents_done includes errors, so subtract to get successful completions
+    const successfulDone = stats.agents_done - stats.agents_error;
+    if (successfulDone > 0) parts.push(`<span class="green">${successfulDone} done</span>`);
+    if (stats.agents_error > 0) parts.push(`<span class="red">${stats.agents_error} error</span>`);
+    agentsDisplay += ` <span style="font-size: 11px; color: var(--text-dim);">(${parts.join(', ')})</span>`;
+  }
+
+// Build theorems display (total in files, how many proved vs with sorries)
+  let theoremsHtml = '';
+  const totalTheorems = stats.total_theorems || 0;
+  const provenTheorems = stats.proven_theorems || 0;
+  if (totalTheorems > 0) {
+    theoremsHtml = `
+      <div class="stat-card">
+        <span class="label">Theorems</span>
+        <span class="value green">${provenTheorems}</span>
+        <span class="value dim">proved</span>
+        <span class="value">/</span>
+        <span class="value">${totalTheorems}</span>
+      </div>
+    `;
+  }
+
+  // Build issues display
+  let issuesHtml = '';
+  const openIssues = stats.open_issues || 0;
+  const closedIssues = stats.closed_issues || 0;
+  issuesHtml = `
+    <div class="stat-card">
+      <span class="label">Issues</span>
+      <span class="value ${openIssues > 0 ? 'yellow' : 'green'}">${openIssues}</span>
+      <span class="value dim">open</span>
+      <span class="value green">${closedIssues}</span>
+      <span class="value dim">closed</span>
+    </div>
+  `;
+
+  // Build active agents display
+  let activeAgentsHtml = '';
+  const activeSketchers = stats.active_sketchers || 0;
+  const activeProvers = stats.active_provers || 0;
+  if (activeSketchers > 0 || activeProvers > 0) {
+    const parts = [];
+    if (activeSketchers > 0) {
+      parts.push(`<span class="accent">${activeSketchers}</span> sketch agent${activeSketchers !== 1 ? 's' : ''}`);
+    }
+    if (activeProvers > 0) {
+      parts.push(`<span class="accent">${activeProvers}</span> prove agent${activeProvers !== 1 ? 's' : ''}`);
+    }
+    activeAgentsHtml = `
+      <div class="stat-card">
+        <span class="label">Active</span>
+        <span class="value small">${parts.join(', ')}</span>
+      </div>
+    `;
+  }
+
+  const div = document.createElement('div');
+  div.className = 'stats-row';
+  div.innerHTML = `
+    <div class="stat-card">
+      <span class="label">Status</span>
+      <span class="pill ${stats.status}">${stats.status}</span>
+    </div>
+    <div class="stat-card">
+      <span class="label">Agents</span>
+      ${agentsDisplay}
+    </div>
+    ${activeAgentsHtml}
+    <div class="stat-card">
+      <span class="label">Duration</span>
+      <span class="value">${duration}</span>
+    </div>
+    <div class="stat-card">
+      <span class="label">Lines</span>
+      <span class="value green">+${stats.diff_stats?.['+'] || 0}</span>
+      <span class="value red">-${stats.diff_stats?.['-'] || 0}</span>
+    </div>
+    <div class="stat-card">
+      <span class="label">PRs Merged</span>
+      <span class="value ${nonEmptyMergedCount > 0 ? 'green' : ''}">${nonEmptyMergedCount}</span>
+    </div>
+    ${theoremsHtml}
+    ${issuesHtml}
+  `;
+  return div;
+}
+
+function renderReviewPills(review, prId) {
+  if (!review) return '<span style="color: var(--text-dim); font-size: 12px;">—</span>';
+
+  const pills = [];
+
+  // Derive reviewer agent IDs from pr_id
+  const mathReviewerAgentId = prId ? `math-${prId}` : null;
+  const engReviewerAgentId = prId ? `engineering-${prId}` : null;
+
+  if (review.math) {
+    const verdict = review.math.verdict;
+    const icon = verdict === 'approve' ? '✓' : verdict === 'reject' ? '✗' : '?';
+    const title = review.math.summary || `Math: ${verdict}`;
+    const dialogLink = mathReviewerAgentId ?
+      `onclick="navigateTo('dialog', '${escapeHtml(mathReviewerAgentId)}'); event.stopPropagation(); return false;" style="cursor: pointer;"` : '';
+    pills.push(`<span class="reviewer-pill math" title="${escapeHtml(title)}" ${dialogLink}>${icon} math</span>`);
+  }
+
+  if (review.engineering) {
+    const verdict = review.engineering.verdict;
+    const icon = verdict === 'approve' ? '✓' : verdict === 'reject' ? '✗' : '?';
+    const title = review.engineering.summary || `Engineering: ${verdict}`;
+    const dialogLink = engReviewerAgentId ?
+      `onclick="navigateTo('dialog', '${escapeHtml(engReviewerAgentId)}'); event.stopPropagation(); return false;" style="cursor: pointer;"` : '';
+    pills.push(`<span class="reviewer-pill engineering" title="${escapeHtml(title)}" ${dialogLink}>${icon} eng</span>`);
+  }
+
+  if (review.build_passed !== undefined) {
+    const icon = review.build_passed ? '✓' : '✗';
+    const cls = review.build_passed ? 'build-pass' : 'build-fail';
+    pills.push(`<span class="reviewer-pill ${cls}" title="Build">${icon} build</span>`);
+  }
+
+  return pills.length > 0 ? `<span class="review-pills">${pills.join('')}</span>` : '<span style="color: var(--text-dim); font-size: 12px;">—</span>';
+}
+
+// ─── Rendering: Dialog Page ──────────────────────────────────────
+async function renderDialogPage(agentId) {
+  if (!agentId) {
+    navigateTo('main');
+    return;
+  }
+
+  const agent = agentsData.find(a => a.id === agentId);
+  const agentLabel = agent ? `${agent.id} (${agent.type})` : agentId;
+
+  document.getElementById('breadcrumb').innerHTML = `
+    <a href="#" onclick="navigateTo('main'); return false;">Agents</a> / ${escapeHtml(agentLabel)} / Dialog
+  `;
+
+  const main = document.getElementById('mainContent');
+  main.innerHTML = `
+    <div class="page-header">
+      <a href="#" class="back-link" onclick="navigateTo('main'); return false;">← Back to agents</a>
+      <h2>Dialog: ${escapeHtml(agentLabel)}</h2>
+      <a href="#" class="btn btn-secondary" onclick="navigateTo('pr', '${escapeHtml(agentId)}'); return false;">View PR →</a>
+    </div>
+    <div id="dialogStats" class="dialog-stats" style="display: none;"></div>
+    <div class="messages-container" id="dialogContainer">
+      <div class="empty-state"><p>Loading dialog...</p></div>
+    </div>
+  `;
+
+  // Load dialog
+  try {
+    let dialogData = agentDialogCache[agentId];
+    if (!dialogData) {
+      const resp = await fetch(`/agent?path=${encodeURIComponent(currentRun)}&id=${encodeURIComponent(agentId)}`);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      dialogData = await resp.json();
+      agentDialogCache[agentId] = dialogData;
+    }
+
+    // Extract token stats from events
+    const tokenStats = extractTokenStats(dialogData.events);
+    const statsContainer = document.getElementById('dialogStats');
+    if (tokenStats.totalInput > 0 || tokenStats.totalOutput > 0) {
+      statsContainer.innerHTML = renderTokenStats(tokenStats);
+      statsContainer.style.display = 'block';
+    }
+
+    const container = document.getElementById('dialogContainer');
+    container.innerHTML = renderAgentDialog(dialogData.events);
+    setTimeout(() => hljs.highlightAll(), 0);
+  } catch (e) {
+    document.getElementById('dialogContainer').innerHTML = `
+      <div class="empty-state"><p>Failed to load dialog: ${escapeHtml(e.message)}</p></div>
+    `;
+  }
+}
+
+function extractTokenStats(events) {
+  let totalInput = 0;
+  let totalOutput = 0;
+  let lastInputTokens = 0;
+  let iterations = 0;
+  let status = '';
+  let error = '';
+
+  for (const event of events) {
+    if (event.event === 'msg') {
+      if (event.input_tokens) {
+        totalInput += event.input_tokens;
+        lastInputTokens = event.input_tokens;
+      }
+      if (event.output_tokens) totalOutput += event.output_tokens;
+    } else if (event.event === 'done') {
+      // Use totals from done event if available (more accurate)
+      if (event.total_input_tokens) totalInput = event.total_input_tokens;
+      if (event.total_output_tokens) totalOutput = event.total_output_tokens;
+      iterations = event.iterations || 0;
+      status = event.status || '';
+      error = event.error || '';
+    }
+  }
+
+  return { totalInput, totalOutput, lastInputTokens, iterations, status, error };
+}
+
+function renderTokenStats(stats) {
+  const totalTokens = stats.totalInput + stats.totalOutput;
+  const formatNum = n => n.toLocaleString();
+
+  let errorHtml = '';
+  if (stats.error) {
+    errorHtml = `
+    <div class="agent-error-banner">
+      <span class="error-icon">⚠</span>
+      <span class="error-label">Error:</span>
+      <pre class="error-message">${escapeHtml(stats.error)}</pre>
+    </div>
+    `;
+  }
+
+  return `
+    <div class="token-stats-bar">
+      <span class="token-stat">
+        <span class="token-label">Input:</span>
+        <span class="token-value">${formatNum(stats.totalInput)}</span>
+      </span>
+      <span class="token-stat">
+        <span class="token-label">Output:</span>
+        <span class="token-value">${formatNum(stats.totalOutput)}</span>
+      </span>
+      <span class="token-stat">
+        <span class="token-label">Total:</span>
+        <span class="token-value token-total">${formatNum(totalTokens)}</span>
+      </span>
+      ${stats.lastInputTokens > 0 ? `
+      <span class="token-stat">
+        <span class="token-label">Last Input:</span>
+        <span class="token-value token-last">${formatNum(stats.lastInputTokens)}</span>
+      </span>
+      ` : ''}
+      ${stats.iterations > 0 ? `
+      <span class="token-stat">
+        <span class="token-label">Iterations:</span>
+        <span class="token-value">${stats.iterations}</span>
+      </span>
+      ` : ''}
+      ${stats.status ? `
+      <span class="token-stat">
+        <span class="token-label">Status:</span>
+        <span class="token-value status-${stats.status}">${stats.status}</span>
+      </span>
+      ` : ''}
+    </div>
+    ${errorHtml}
+  `;
+}
+
+function renderAgentDialog(events) {
+  const messages = [];
+
+  for (const event of events) {
+    if (event.event === 'msg') {
+      const msg = {
+        role: event.role,
+        content: event.content,
+        ts: event.ts,
+        toolCalls: event.tool_calls || []
+      };
+      messages.push(msg);
+    } else if (event.event === 'tool') {
+      messages.push({
+        role: 'tool',
+        name: event.name,
+        args: event.args,
+        result: event.result,
+        duration_ms: event.duration_ms,
+        ts: event.ts
+      });
+    } else if (event.event === 'compaction') {
+      messages.push({
+        role: 'compaction',
+        compaction_number: event.compaction_number,
+        context_tokens_before: event.context_tokens_before,
+        context_tokens_after: event.context_tokens_after,
+        input_tokens: event.input_tokens,
+        output_tokens: event.output_tokens,
+        summary: event.summary,
+        ts: event.ts
+      });
+    }
+  }
+
+  if (messages.length === 0) {
+    return '<div class="empty-state"><p>No messages recorded</p></div>';
+  }
+
+  // Track previous message role to determine when to show "assistant" label
+  return messages.map((msg, idx) => {
+    const prevMsg = idx > 0 ? messages[idx - 1] : null;
+    const showAssistantLabel = msg.role === 'assistant' && prevMsg && prevMsg.role === 'user';
+    return renderMessage(msg, idx, showAssistantLabel);
+  }).join('');
+}
+
+function renderMessage(msg, idx, showAssistantLabel = false) {
+  if (msg.role === 'tool') {
+    return renderToolResult(msg);
+  }
+
+  if (msg.role === 'compaction') {
+    return renderCompactionEvent(msg);
+  }
+
+  const content = (msg.content || '').trim();
+  const isLong = content.length > 1500;
+  const isEmpty = content.length === 0;
+  const contentId = `msg-content-${idx}`;
+
+  if (isEmpty && msg.role === 'assistant') {
+    return '';
+  }
+
+  let roleHtml = '';
+  if (msg.role === 'user') {
+    roleHtml = `<span class="message-role ${msg.role}">${msg.role}</span>`;
+  } else if (showAssistantLabel) {
+    roleHtml = `<span class="message-role ${msg.role}">assistant</span>`;
+  }
+
+  // Render content as markdown for proper formatting
+  const displayContent = isLong ? content.slice(0, 1500) + '…' : content;
+  const renderedContent = renderMarkdown(displayContent);
+  const fullRenderedContent = isLong ? renderMarkdown(content) : renderedContent;
+
+  return `
+    <div class="message ${isEmpty ? 'empty-content' : ''}">
+      ${roleHtml}${!isEmpty ? `<div class="message-content ${isLong ? 'truncated' : ''}" id="${contentId}">${renderedContent}</div>
+        ${isLong ? `<div class="message-content-full" id="${contentId}-full" style="display: none;">${fullRenderedContent}</div>
+        <button class="expand-content-btn" onclick="expandMessageContent('${contentId}')">Show full message</button>` : ''}` : ''}
+    </div>
+  `;
+}
+
+function renderToolResult(msg) {
+  const result = msg.result || '';
+  const isLarge = result.length > 2000 || result.split('\n').length > 50;
+  const tcId = `tool-result-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+  const args = msg.args || {};
+  let argsInline = '';
+  const MAX_ARGS_LEN = 60;
+
+  if (args.command) {
+    argsInline = args.command;
+  } else if (args.path) {
+    argsInline = args.path;
+  } else if (Object.keys(args).length > 0) {
+    const firstVal = Object.values(args)[0];
+    argsInline = typeof firstVal === 'string' ? firstVal : JSON.stringify(firstVal);
+  }
+
+  if (argsInline.length > MAX_ARGS_LEN) {
+    argsInline = argsInline.slice(0, MAX_ARGS_LEN) + '…';
+  }
+
+  const lines = result.split('\n').filter(l => l.trim());
+  const lastLines = lines.slice(-3).map(l => l.length > 100 ? l.slice(0, 100) + '…' : l);
+  const outputPreview = lastLines.length > 0 ? lastLines.join('\n') : '';
+
+  return `
+    <div class="tool-call" id="${tcId}">
+      <div class="tool-call-header" onclick="toggleToolCall('${tcId}')">
+        <span class="tool-name">${msg.name || 'tool'}(${escapeHtml(argsInline)})</span>
+        <span class="tool-duration">${msg.duration_ms ? msg.duration_ms.toFixed(0) + 'ms' : ''}</span>
+        <span class="expand-icon">▶</span>
+      </div>
+      ${outputPreview ? `<div class="tool-output-preview">${escapeHtml(outputPreview)}</div>` : ''}
+      <div class="tool-call-body">
+        <div class="tool-args">
+          <div class="tool-label">Arguments</div>
+          ${renderCodeBlock(JSON.stringify(msg.args, null, 2), 'json')}
+        </div>
+        <div class="tool-result">
+          <div class="tool-label">Result ${isLarge ? `(${result.split('\n').length} lines)` : ''}</div>
+          ${isLarge ? renderLargeResult(result, tcId) : renderCodeBlock(result, 'text')}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderCompactionEvent(msg) {
+  const tokensBefore = msg.context_tokens_before || 0;
+  const tokensAfter = msg.context_tokens_after || 0;
+  const reduction = tokensBefore > 0 ? ((1 - tokensAfter / tokensBefore) * 100).toFixed(0) : 0;
+  const summary = msg.summary || '';
+  const compactId = `compaction-${msg.compaction_number}-${Date.now()}`;
+
+  return `
+    <div class="compaction-event" id="${compactId}">
+      <div class="compaction-header" onclick="toggleCompaction('${compactId}')">
+        <span class="compaction-icon">[C]</span>
+        <span class="compaction-title">Context Compaction #${msg.compaction_number}</span>
+        <span class="compaction-reduction">-${reduction}%</span>
+        <span class="expand-icon">▶</span>
+      </div>
+      <div class="compaction-stats">
+        <span class="compaction-stat">
+          <span class="stat-label">Before:</span>
+          <span class="stat-value">${tokensBefore.toLocaleString()}</span>
+        </span>
+        <span class="compaction-arrow">→</span>
+        <span class="compaction-stat">
+          <span class="stat-label">After:</span>
+          <span class="stat-value">${tokensAfter.toLocaleString()}</span>
+        </span>
+        <span class="compaction-stat">
+          <span class="stat-label">Cost:</span>
+          <span class="stat-value">${(msg.input_tokens || 0).toLocaleString()} / ${(msg.output_tokens || 0).toLocaleString()}</span>
+        </span>
+      </div>
+      <div class="compaction-summary">
+        <div class="compaction-summary-label">Context Summary</div>
+        <div class="compaction-summary-content">${summary.length > 0 ? renderMarkdown(summary) : '<em>No summary recorded</em>'}</div>
+      </div>
+    </div>
+  `;
+}
+
+function toggleCompaction(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.toggle('expanded');
+}
+
+function renderLargeResult(result, tcId) {
+  const preview = result.slice(0, 1000);
+  const resultId = `${tcId}-result`;
+  const encodedResult = btoa(unescape(encodeURIComponent(result)));
+
+  return `
+    <pre class="large-preview" id="${resultId}-preview"><code>${escapeHtml(preview)}</code></pre>
+    <button class="expand-content-btn" data-result="${encodedResult}" data-target="${resultId}" onclick="showFullResultFromBtn(this)">
+      Show full result (${result.split('\n').length} lines)
+    </button>
+    <pre id="${resultId}-full" style="display: none;"><code>${escapeHtml(result)}</code></pre>
+  `;
+}
+
+function showFullResultFromBtn(btn) {
+  const targetId = btn.dataset.target;
+  document.getElementById(`${targetId}-preview`).style.display = 'none';
+  document.getElementById(`${targetId}-full`).style.display = 'block';
+  btn.style.display = 'none';
+  hljs.highlightAll();
+}
+
+function toggleToolCall(id) {
+  document.getElementById(id).classList.toggle('expanded');
+}
+
+function expandContent(id) {
+  const el = document.getElementById(id);
+  el.classList.remove('truncated');
+  el.nextElementSibling.style.display = 'none';
+}
+
+function expandMessageContent(id) {
+  const truncated = document.getElementById(id);
+  const full = document.getElementById(id + '-full');
+  const btn = truncated.nextElementSibling?.nextElementSibling;
+  if (truncated && full) {
+    truncated.style.display = 'none';
+    full.style.display = 'block';
+    if (btn) btn.style.display = 'none';
+  }
+}
+
+// ─── Rendering: PR Page ──────────────────────────────────────────
+async function renderPRPage(agentId) {
+  if (!agentId) {
+    navigateTo('main');
+    return;
+  }
+
+  const agent = agentsData.find(a => a.id === agentId);
+  const agentLabel = agent ? `${agent.id} (${agent.type})` : agentId;
+
+  document.getElementById('breadcrumb').innerHTML = `
+    <a href="#" onclick="navigateTo('main'); return false;">Overview</a> / ${escapeHtml(agentLabel)} / PR
+  `;
+
+  const main = document.getElementById('mainContent');
+  main.innerHTML = `
+    <div class="page-header">
+      <a href="#" class="back-link" onclick="navigateTo('main'); return false;">\u2190 Back to overview</a>
+      <h2>\u25a1 PR: ${escapeHtml(agentLabel)}</h2>
+      <a href="#" class="btn btn-secondary" onclick="navigateTo('dialog', '${escapeHtml(agentId)}'); return false;">\u2190 View Dialog</a>
+    </div>
+      <div id="prContent">
+        <div class="empty-state"><p>Loading PR details...</p></div>
+      </div>
+    `;
+
+  // Get agent data and find relevant PR/review events
+  try {
+    let dialogData = agentDialogCache[agentId];
+    if (!dialogData) {
+      const resp = await fetch(`/agent?path=${encodeURIComponent(currentRun)}&id=${encodeURIComponent(agentId)}`);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      dialogData = await resp.json();
+      agentDialogCache[agentId] = dialogData;
+    }
+
+    // Fetch the full chronological PR timeline
+    const timelineResp = await fetch(`/pr-timeline?path=${encodeURIComponent(currentRun)}&agent_id=${encodeURIComponent(agentId)}`);
+    let chronoEvents = [];
+    if (timelineResp.ok) {
+      const timelineData = await timelineResp.json();
+      chronoEvents = timelineData.events || [];
+    }
+
+    // Collect ALL pr_submitted and review_completed events for this agent
+    let prSubmissions = sessionData.events.filter(e => e.event === 'pr_submitted' && e.agent_id === agentId);
+    const reviews = sessionData.events.filter(e => e.event === 'review_completed' && e.agent_id === agentId);
+
+    // For resumed agents, synthesize pr_submitted events from the agent_resumed event
+    // This ensures the viewer can show diffs for resumed runs
+    const resumedEvent = sessionData.events.find(e => e.event === 'agent_resumed' && e.agent_id === agentId);
+    if (resumedEvent && resumedEvent.diffs) {
+      // Create synthetic pr_submitted events for each revision in diffs
+      for (const [revNumStr, diffContent] of Object.entries(resumedEvent.diffs)) {
+        const revNum = parseInt(revNumStr, 10);
+        // Only add if we don't already have a pr_submitted for this revision
+        const existing = prSubmissions.find(s => (s.revision_number || 0) === revNum);
+        if (!existing) {
+          // Compute diff stats from diff content
+          const diffStats = parseDiffStats(diffContent);
+          prSubmissions.push({
+            event: 'pr_submitted',
+            agent_id: agentId,
+            pr_id: resumedEvent.pr_id,
+            revision_number: revNum,
+            diff: diffContent,  // Inline diff content
+            diff_stats: diffStats,  // Computed from diff content
+            ts: resumedEvent.ts,  // Use resumed timestamp as approximation
+            agent_type: resumedEvent.agent_type,
+            chapter_id: resumedEvent.chapter_id,
+            theorem_name: resumedEvent.theorem_name,
+          });
+        }
+      }
+      // Sort by revision number after adding synthetic events
+      prSubmissions.sort((a, b) => (a.revision_number || 0) - (b.revision_number || 0));
+    }
+
+    // Collect merge events (both successful and failed) for this agent
+    const mergeEvents = sessionData.events.filter(e => e.event === 'merge_completed' && e.agent_id === agentId);
+    const mergeConflictEvents = sessionData.events.filter(e => e.event === 'merge_conflict_detected' && e.agent_id === agentId);
+
+    // Find the final merge status (latest merge event)
+    const latestMerge = mergeEvents.length > 0 ? mergeEvents[mergeEvents.length - 1] : null;
+
+    // Build revision timeline by matching submissions, reviews, and merge events by revision_number
+    const revisions = buildRevisionTimeline(prSubmissions, reviews, mergeEvents, mergeConflictEvents);
+
+    const container = document.getElementById('prContent');
+    container.innerHTML = renderPRContentWithTimeline(agent, revisions, latestMerge, chronoEvents);
+
+    // Load diff content for each revision
+    for (const rev of revisions) {
+      if (rev.submission) {
+        const diffContainer = document.getElementById(`diff-${rev.revisionNumber}`);
+        if (diffContainer) {
+          try {
+            let diffContent = null;
+            // First try inline diff (new format or synthetic from agent_resumed)
+            if (rev.submission.diff) {
+              diffContent = rev.submission.diff;
+            }
+            // Fall back to diff_file (legacy format)
+            else if (rev.submission.diff_file) {
+              diffContent = await fetchText(`/diff?path=${encodeURIComponent(currentRun)}&file=${encodeURIComponent(rev.submission.diff_file)}`);
+            }
+
+            if (diffContent) {
+              diffContainer.innerHTML = renderDiffContent(diffContent);
+            } else {
+              diffContainer.innerHTML = `<span style="color: var(--dim)">No diff available</span>`;
+            }
+          } catch (e) {
+            diffContainer.innerHTML = `<span style="color: var(--red)">Error loading diff: ${escapeHtml(e.message)}</span>`;
+          }
+        }
+      }
+    }
+  } catch (e) {
+    document.getElementById('prContent').innerHTML = `
+      <div class="empty-state"><p>Failed to load PR details: ${escapeHtml(e.message)}</p></div>
+    `;
+  }
+}
+
+function buildRevisionTimeline(submissions, reviews, mergeEvents, mergeConflictEvents) {
+  // Group by revision_number
+  const revMap = new Map();
+
+  for (const sub of submissions) {
+    const revNum = sub.revision_number || 0;
+    if (!revMap.has(revNum)) {
+      revMap.set(revNum, { revisionNumber: revNum, submission: null, review: null, mergeEvents: [] });
+    }
+    revMap.get(revNum).submission = sub;
+  }
+
+  for (const rev of reviews) {
+    const revNum = rev.revision_number || 0;
+    if (!revMap.has(revNum)) {
+      revMap.set(revNum, { revisionNumber: revNum, submission: null, review: null, mergeEvents: [] });
+    }
+    revMap.get(revNum).review = rev;
+  }
+
+  // Attach merge events to their revision
+  for (const merge of mergeEvents) {
+    const revNum = merge.revision_number || 0;
+    if (!revMap.has(revNum)) {
+      revMap.set(revNum, { revisionNumber: revNum, submission: null, review: null, mergeEvents: [] });
+    }
+    revMap.get(revNum).mergeEvents.push(merge);
+  }
+
+  // Attach pre-review merge conflict events to their revision
+  for (const conflict of mergeConflictEvents) {
+    const revNum = conflict.revision_number || 0;
+    if (!revMap.has(revNum)) {
+      revMap.set(revNum, { revisionNumber: revNum, submission: null, review: null, mergeEvents: [] });
+    }
+    // Mark as a pre-review merge conflict (distinct from merge_completed conflicts)
+    revMap.get(revNum).mergeEvents.push({ ...conflict, isPreReviewConflict: true });
+  }
+
+  // Sort by revision number (oldest first for timeline)
+  return Array.from(revMap.values()).sort((a, b) => a.revisionNumber - b.revisionNumber);
+}
+
+function renderPRContent(agent, revisions, mergeCompleted) {
+  let html = '';
+
+  // Overall status based on latest revision
+  const latestRevision = revisions.length > 0 ? revisions[revisions.length - 1] : null;
+  html += renderMergeStatus(agent, latestRevision?.review, mergeCompleted);
+
+  // Revision timeline
+  if (revisions.length > 0) {
+    html += `
+      <div class="pr-section">
+        <div class="pr-section-header">Revision History (${revisions.length} ${revisions.length === 1 ? 'version' : 'versions'})</div>
+        <div class="pr-section-body">
+          <div class="revision-timeline">
+            ${revisions.map((rev, idx) => renderRevisionEntry(rev, idx, revisions.length, mergeCompleted)).join('')}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  return html;
+}
+
+function renderPRContentWithTimeline(agent, revisions, mergeCompleted, chronoEvents) {
+  let html = '';
+
+  // Overall status based on latest revision
+  const latestRevision = revisions.length > 0 ? revisions[revisions.length - 1] : null;
+  html += renderMergeStatus(agent, latestRevision?.review, mergeCompleted);
+
+  // Chronological Timeline section (NEW!)
+  if (chronoEvents && chronoEvents.length > 0) {
+    html += `
+      <div class="pr-section">
+        <div class="pr-section-header">Chronological Timeline (${chronoEvents.length} events)</div>
+        <div class="pr-section-body">
+          <div class="pr-chrono-timeline">
+            ${renderChronoTimeline(chronoEvents)}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // Revision timeline (existing, now secondary)
+  if (revisions.length > 0) {
+    html += `
+      <div class="pr-section">
+        <div class="pr-section-header">Revision Details (${revisions.length} ${revisions.length === 1 ? 'version' : 'versions'})</div>
+        <div class="pr-section-body">
+          <div class="revision-timeline">
+            ${revisions.map((rev, idx) => renderRevisionEntry(rev, idx, revisions.length, mergeCompleted)).join('')}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  return html;
+}
+
+function renderChronoTimeline(events) {
+  let html = '';
+  let currentRevision = -1;
+
+  for (const event of events) {
+    const eventType = event.event;
+    const ts = event.ts ? formatRelativeTime(event.ts) : '';
+    const revNum = event.revision_number ?? 0;
+
+    // Add revision marker when revision changes
+    if (eventType === 'pr_submitted' || eventType === 'revision_started') {
+      if (revNum !== currentRevision) {
+        currentRevision = revNum;
+        const revLabel = revNum > 0 ? `Revision ${revNum}` : 'Initial Submission';
+        html += `<div class="pr-chrono-revision-marker">📌 ${revLabel}</div>`;
+      }
+    }
+
+    // Determine event class (success/failure/pending/info)
+    let eventClass = 'info';
+    let details = '';
+
+    switch (eventType) {
+      case 'pr_submitted': {
+        eventClass = 'info';
+        const diffStats = event.diff_stats || {};
+        const additions = diffStats['+'] || 0;
+        const deletions = diffStats['-'] || 0;
+        details = `PR submitted: <code>${escapeHtml(event.pr_id || '')}</code>`;
+        if (additions || deletions) {
+          details += ` (<span class="success">+${additions}</span> / <span class="failure">-${deletions}</span>)`;
+        }
+        break;
+      }
+
+      case 'review_launched':
+        eventClass = 'pending';
+        details = `Review started`;
+        break;
+
+      case 'pre_review_merge':
+      case 'pre_review_rebase': {
+        const success = event.success;
+        eventClass = success ? 'success' : 'failure';
+        if (success) {
+          details = `<span class="success">✓ Merged</span> main into PR branch`;
+          if (event.main_commit_hash) {
+            details += ` (main: <code>${event.main_commit_hash.slice(0, 8)}</code>)`;
+          }
+        } else {
+          details = `<span class="failure">✗ Merge with main failed</span>`;
+          if (event.conflict_files && event.conflict_files.length > 0) {
+            details += `<br>Conflicts: ${event.conflict_files.map(f => `<code>${escapeHtml(f)}</code>`).join(', ')}`;
+          }
+        }
+        break;
+      }
+
+      case 'review_completed': {
+        const verdict = event.combined_verdict;
+        eventClass = verdict === 'approve' ? 'success' : 'failure';
+        details = `Review: <span class="${eventClass}">${verdict}</span>`;
+
+        // Add math/engineering verdict details
+        const mathVerdict = event.math?.verdict || event.semantic?.verdict;
+        const engVerdict = event.engineering?.verdict;
+        const verdicts = [];
+        if (mathVerdict) verdicts.push(`Math: ${mathVerdict}`);
+        if (engVerdict) verdicts.push(`Eng: ${engVerdict}`);
+        if (event.build_passed !== undefined) {
+          verdicts.push(`Build: ${event.build_passed ? '✓' : '✗'}`);
+        }
+        if (verdicts.length > 0) {
+          details += ` (${verdicts.join(', ')})`;
+        }
+        break;
+      }
+
+      case 'build_completed': {
+        const passed = event.passed;
+        eventClass = passed ? 'success' : 'failure';
+        const duration = event.duration_s ? ` <span class="duration">(${event.duration_s.toFixed(1)}s)</span>` : '';
+        const context = event.context ? `[${event.context}] ` : '';
+        details = `${context}Build <span class="${eventClass}">${passed ? 'passed' : 'FAILED'}</span>${duration}`;
+        if (!passed && event.error) {
+          const truncatedError = event.error.length > 100 ? event.error.slice(0, 100) + '...' : event.error;
+          details += `<br><code style="color: var(--red); font-size: 10px;">${escapeHtml(truncatedError)}</code>`;
+        }
+        break;
+      }
+
+      case 'merge_completed': {
+        const success = event.success;
+        eventClass = success ? 'success' : 'failure';
+        if (success) {
+          const commitHash = event.commit_hash ? event.commit_hash.slice(0, 8) : '';
+          details = `<span class="success">✓ Merged</span>`;
+          if (commitHash) details += ` → <code>${commitHash}</code>`;
+          if (event.build_duration_s) {
+            details += ` <span class="duration">(build: ${event.build_duration_s.toFixed(1)}s)</span>`;
+          }
+        } else {
+          const reason = event.failure_reason || 'unknown';
+          details = `<span class="failure">✗ Merge failed:</span> ${reason}`;
+          if (event.conflict_files && event.conflict_files.length > 0) {
+            details += `<br>Conflicts: ${event.conflict_files.map(f => `<code>${escapeHtml(f)}</code>`).join(', ')}`;
+          }
+          if (event.error && reason !== 'merge_conflict') {
+            const truncatedError = event.error.length > 80 ? event.error.slice(0, 80) + '...' : event.error;
+            details += `<br><code style="color: var(--red); font-size: 10px;">${escapeHtml(truncatedError)}</code>`;
+          }
+        }
+        break;
+      }
+
+      case 'revision_started':
+        eventClass = 'pending';
+        details = `Started revision ${revNum} (addressing feedback)`;
+        break;
+
+      case 'pr_status_changed': {
+        const newStatus = event.new_status;
+        eventClass = newStatus === 'approved' || newStatus === 'merged' ? 'success' :
+                     newStatus === 'needs_revision' || newStatus === 'failed' ? 'failure' : 'info';
+        details = `Status → <span class="${eventClass}">${newStatus}</span>`;
+        // Show failure reason if available
+        if (newStatus === 'failed' && event.reason) {
+          const reasonText = event.reason.replace(/_/g, ' ');
+          details += `<br><span style="color: var(--text-dim); font-size: 11px;">Reason: ${escapeHtml(reasonText)}</span>`;
+          if (event.error) {
+            const errorPreview = event.error.split('\n')[0].slice(0, 100);
+            details += `<br><span style="color: var(--text-dim); font-size: 11px;">${escapeHtml(errorPreview)}${event.error.length > 100 ? '...' : ''}</span>`;
+          }
+        }
+        break;
+      }
+
+      case 'agent_dispatch_failed': {
+        eventClass = 'failure';
+        const reason = event.reason ? event.reason.replace(/_/g, ' ') : 'unknown';
+        details = `Agent dispatch failed: ${escapeHtml(reason)}`;
+        if (event.error) {
+          const errorPreview = event.error.split('\n')[0].slice(0, 100);
+          details += `<br><span style="color: var(--text-dim); font-size: 11px;">${escapeHtml(errorPreview)}${event.error.length > 100 ? '...' : ''}</span>`;
+        }
+        break;
+      }
+
+      case 'fix_request':
+        eventClass = 'info';
+        const theoremName = event.theorem_name ? `<code>${escapeHtml(event.theorem_name)}</code>` : '';
+        details = `Fixed theorem ${theoremName}`;
+        if (event.request) {
+          // Show first line of request
+          const firstLine = event.request.split('\n')[0].slice(0, 80);
+          details += `<br><span style="color: var(--text-dim); font-size: 11px;">${escapeHtml(firstLine)}${event.request.length > 80 ? '...' : ''}</span>`;
+        }
+        break;
+
+      default:
+        details = eventType;
+    }
+
+    html += `
+      <div class="pr-chrono-event ${eventClass}">
+        <div class="pr-chrono-event-header">
+          <span class="pr-chrono-event-type ${eventType}">${eventType.replace(/_/g, ' ')}</span>
+          <span class="pr-chrono-event-time">${ts}</span>
+        </div>
+        <div class="pr-chrono-event-details">${details}</div>
+      </div>
+    `;
+  }
+
+  return html;
+}
+
+function renderRevisionEntry(rev, index, total, mergeCompleted) {
+  const isLatest = index === total - 1;
+  const revNum = rev.revisionNumber;
+  const submission = rev.submission;
+  const review = rev.review;
+  const mergeEvents = rev.mergeEvents || [];
+
+  // Determine entry state for styling
+  let entryClass = '';
+  if (isLatest && mergeCompleted?.success) {
+    entryClass = 'approved';
+  } else if (review?.combined_verdict === 'approve') {
+    entryClass = 'approved';
+  } else if (review?.combined_verdict === 'reject' || review?.combined_verdict === 'request_changes') {
+    entryClass = 'rejected';
+  } else if (isLatest) {
+    entryClass = 'current';
+  }
+
+  // Revision label
+  const revLabel = revNum > 0 ? `Rev ${revNum}` : 'Initial';
+
+  // Diff stats
+  const diffStats = submission?.diff_stats || {};
+  const additions = diffStats['+'] || 0;
+  const deletions = diffStats['-'] || 0;
+  const statsHtml = `<span class="revision-stats"><span style="color: var(--green);">+${additions}</span> <span style="color: var(--red);">-${deletions}</span></span>`;
+
+  // Verdict display
+  let verdictHtml = '';
+  if (review) {
+    const verdict = review.combined_verdict;
+    const verdictClass = verdict === 'approve' ? 'green' : verdict === 'reject' ? 'red' : 'yellow';
+    verdictHtml = `<span class="revision-verdict" style="color: var(--${verdictClass});">${verdict}</span>`;
+  }
+
+  // Time display
+  const submissionTime = submission?.ts ? formatRelativeTime(submission.ts) : '';
+  const reviewTime = review?.ts ? formatRelativeTime(review.ts) : '';
+
+  // Diff HTML
+  let diffHtml = '';
+  if (submission?.diff) {
+    diffHtml = `<div class="revision-diff">${renderDiffContent(submission.diff)}</div>`;
+  } else if (submission?.diff_file) {
+    diffHtml = `<div class="revision-diff" id="diff-${revNum}"><em>Loading diff...</em></div>`;
+  }
+
+  // Full review details (shown after diff)
+  const reviewDetailsHtml = review ? renderReviewDetails(review) : '';
+
+  // Merge events attached to this revision
+  const mergeEventsHtml = mergeEvents.length > 0 ? renderMergeEvents(mergeEvents) : '';
+
+  return `
+    <div class="revision-entry ${entryClass}">
+      <div class="revision-content">
+        <div class="revision-header">
+          <span class="revision-label">${revLabel}</span>
+          ${statsHtml}
+          ${verdictHtml}
+          <span class="revision-time">${submissionTime}${reviewTime ? ' → reviewed ' + reviewTime : ''}</span>
+        </div>
+        ${diffHtml}
+        ${reviewDetailsHtml}
+        ${mergeEventsHtml}
+      </div>
+    </div>
+  `;
+}
+
+function toggleRevisionDiff(id) {
+  const el = document.getElementById(id);
+  if (el) {
+    el.classList.toggle('expanded');
+  }
+}
+
+function renderMergeStatus(agent, reviewCompleted, mergeCompleted) {
+  let statusClass = 'waiting';
+  let statusText = 'Pending Review';
+  let statusIcon = '';
+  let detailsHtml = '';
+
+  if (mergeCompleted) {
+    if (mergeCompleted.success) {
+      statusClass = 'merged';
+      statusText = `Merged (${mergeCompleted.commit_hash ? mergeCompleted.commit_hash.slice(0, 8) : 'success'})`;
+      statusIcon = '✓';
+    } else {
+      statusClass = 'blocked';
+      // Build a more informative failure message
+      const failureReason = mergeCompleted.failure_reason;
+      if (failureReason === 'merge_conflict') {
+        statusText = 'Merge Conflict';
+      } else if (failureReason === 'build_failed') {
+        statusText = 'Build Failed After Merge';
+      } else if (failureReason === 'build_timeout') {
+        statusText = 'Build Timeout';
+      } else {
+        statusText = `Merge Failed: ${mergeCompleted.error || 'Unknown error'}`;
+      }
+      statusIcon = '✗';
+
+      // Add details section for failures
+      const details = [];
+      if (mergeCompleted.conflict_files && mergeCompleted.conflict_files.length > 0) {
+        details.push(`<div style="margin-top: 4px; font-size: 11px;"><strong>Conflicting files:</strong> ${mergeCompleted.conflict_files.map(f => `<code>${escapeHtml(f)}</code>`).join(', ')}</div>`);
+      }
+      if (mergeCompleted.main_commit_hash) {
+        details.push(`<div style="font-size: 10px; color: var(--muted);">Against main: ${mergeCompleted.main_commit_hash}</div>`);
+      }
+      if (mergeCompleted.build_duration_s !== undefined && failureReason === 'build_failed') {
+        details.push(`<div style="font-size: 10px; color: var(--muted);">Build duration: ${mergeCompleted.build_duration_s.toFixed(1)}s</div>`);
+      }
+      if (mergeCompleted.error && failureReason !== 'merge_conflict') {
+        // Show truncated error for non-conflict failures
+        const truncatedError = mergeCompleted.error.length > 200 ? mergeCompleted.error.slice(0, 200) + '...' : mergeCompleted.error;
+        details.push(`<div style="margin-top: 4px; font-size: 11px; color: var(--red); white-space: pre-wrap; font-family: var(--font-mono);">${escapeHtml(truncatedError)}</div>`);
+      }
+      detailsHtml = details.join('');
+    }
+  } else if (reviewCompleted) {
+    const verdict = reviewCompleted.combined_verdict;
+    if (verdict === 'approve') {
+      statusClass = 'ready';
+      statusText = 'Ready to Merge';
+      statusIcon = '✓';
+    } else if (verdict === 'reject' || verdict === 'request_changes') {
+      statusClass = 'blocked';
+      statusText = 'Changes Requested';
+      statusIcon = '✗';
+    } else {
+      statusClass = 'waiting';
+      statusText = `Review: ${verdict}`;
+      statusIcon = '';
+    }
+  } else if (agent && agent.status === 'error') {
+    statusClass = 'blocked';
+    statusText = 'Agent Error';
+    statusIcon = '✗';
+  }
+
+  return `
+    <div class="merge-status ${statusClass}">
+      <span style="font-size: 14px;">${statusIcon}</span>
+        <span style="font-weight: 600; font-size: 12px;">${statusText}</span>
+      ${detailsHtml}
+    </div>
+  `;
+}
+
+function renderReviewDetails(review) {
+  let content = '';
+
+  // Derive reviewer agent IDs from pr_id (they follow the pattern math-{pr_id} and engineering-{pr_id})
+  const prId = review.pr_id;
+  const mathReviewerAgentId = prId ? `math-${prId}` : null;
+  const engReviewerAgentId = prId ? `engineering-${prId}` : null;
+
+  // Math review
+  if (review.math) {
+    const verdictClass = review.math.verdict === 'approve' ? 'verdict-approve' :
+                          review.math.verdict === 'reject' ? 'verdict-reject' : 'verdict-changes';
+    const dialogLink = mathReviewerAgentId ?
+      `<a href="#" class="reviewer-dialog-link" onclick="navigateTo('dialog', '${escapeHtml(mathReviewerAgentId)}'); return false;" title="View full reviewer dialog">[dialog]</a>` : '';
+    content += `
+      <div class="review-item" style="margin-bottom: 10px;">
+        <div class="review-item-header">
+          <span class="review-item-type review-type-math">Math Review</span>
+          <span class="review-item-verdict ${verdictClass}">${review.math.verdict}</span>
+          ${dialogLink}
+        </div>
+        ${review.math.summary ? `<div class="review-item-summary">${renderMarkdown(review.math.summary)}</div>` : ''}
+      </div>
+    `;
+  }
+
+  // Engineering review
+  if (review.engineering) {
+    const verdictClass = review.engineering.verdict === 'approve' ? 'verdict-approve' :
+                          review.engineering.verdict === 'reject' ? 'verdict-reject' : 'verdict-changes';
+    const dialogLink = engReviewerAgentId ?
+      `<a href="#" class="reviewer-dialog-link" onclick="navigateTo('dialog', '${escapeHtml(engReviewerAgentId)}'); return false;" title="View full reviewer dialog">[dialog]</a>` : '';
+    content += `
+      <div class="review-item" style="margin-bottom: 10px;">
+        <div class="review-item-header">
+          <span class="review-item-type review-type-eng">Engineering Review</span>
+          <span class="review-item-verdict ${verdictClass}">${review.engineering.verdict}</span>
+          ${dialogLink}
+        </div>
+        ${review.engineering.summary ? `<div class="review-item-summary">${renderMarkdown(review.engineering.summary)}</div>` : ''}
+      </div>
+    `;
+  }
+
+  // Build status
+  if (review.build_passed !== undefined) {
+    const passed = review.build_passed;
+    content += `
+      <div class="review-item">
+        <div class="review-item-header">
+          <span class="review-item-type review-type-build">Build</span>
+          <span class="review-item-verdict ${passed ? 'verdict-approve' : 'verdict-reject'}">${passed ? 'Passed' : 'Failed'}</span>
+        </div>
+        ${review.build_output ? `<div class="review-item-summary" style="font-family: var(--font-mono); font-size: 12px; max-height: 200px; overflow: auto; white-space: pre-wrap;">${escapeHtml(review.build_output)}</div>` : ''}
+      </div>
+    `;
+  }
+
+  if (!content) {
+    return '';
+  }
+
+  return `
+    <div class="revision-review-details" style="margin-top: 12px; padding: 12px; background: var(--bg-secondary); border-radius: 6px; border-left: 3px solid var(--border);">
+      <div style="font-weight: 600; margin-bottom: 8px; font-size: 13px; color: var(--text-secondary);">Review Comments</div>
+      ${content}
+    </div>
+  `;
+}
+
+function renderMergeEvents(mergeEvents) {
+  if (!mergeEvents || mergeEvents.length === 0) return '';
+
+  const items = mergeEvents.map(event => {
+    const ts = event.ts ? formatRelativeTime(event.ts) : '';
+
+    // Pre-review merge conflict detection
+    if (event.isPreReviewConflict || event.event === 'merge_conflict_detected') {
+      const files = event.conflict_files?.join(', ') || 'unknown files';
+      const mainHash = event.main_commit_hash ? ` (main: ${event.main_commit_hash})` : '';
+      return `
+        <div class="merge-event merge-event-conflict" style="display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; background: rgba(248, 81, 73, 0.1); border-radius: 4px; border-left: 3px solid var(--red);">
+          <span style="color: var(--red); font-size: 14px;">⚠</span>
+          <div style="flex: 1;">
+            <div style="font-weight: 500; color: var(--red);">Pre-review Merge Conflict</div>
+            <div style="font-size: 12px; color: var(--text-secondary); margin-top: 2px;">
+              Conflicting files: <code style="background: var(--bg-tertiary); padding: 1px 4px; border-radius: 3px;">${escapeHtml(files)}</code>${mainHash}
+            </div>
+            ${ts ? `<div style="font-size: 11px; color: var(--text-dim); margin-top: 4px;">${ts}</div>` : ''}
+          </div>
+        </div>
+      `;
+    }
+
+    // Merge completed event
+    if (event.success) {
+      const commitHash = event.commit_hash?.slice(0, 8) || 'success';
+      return `
+        <div class="merge-event merge-event-success" style="display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; background: rgba(63, 185, 80, 0.1); border-radius: 4px; border-left: 3px solid var(--green);">
+          <span style="color: var(--green); font-size: 14px;">✓</span>
+          <div style="flex: 1;">
+            <div style="font-weight: 500; color: var(--green);">Merged Successfully</div>
+            <div style="font-size: 12px; color: var(--text-secondary); margin-top: 2px;">
+              Commit: <code style="background: var(--bg-tertiary); padding: 1px 4px; border-radius: 3px;">${escapeHtml(commitHash)}</code>
+            </div>
+            ${ts ? `<div style="font-size: 11px; color: var(--text-dim); margin-top: 4px;">${ts}</div>` : ''}
+          </div>
+        </div>
+      `;
+    }
+
+    // Failed merge
+    const failureReason = event.failure_reason;
+    let title = 'Merge Failed';
+    let details = [];
+
+    if (failureReason === 'merge_conflict') {
+      title = 'Merge Conflict';
+      if (event.conflict_files?.length > 0) {
+        details.push(`Conflicting files: <code style="background: var(--bg-tertiary); padding: 1px 4px; border-radius: 3px;">${escapeHtml(event.conflict_files.join(', '))}</code>`);
+      }
+    } else if (failureReason === 'build_failed') {
+      title = 'Build Failed After Merge';
+      if (event.build_duration_s !== undefined) {
+        details.push(`Build duration: ${event.build_duration_s.toFixed(1)}s`);
+      }
+      if (event.error) {
+        const truncated = event.error.length > 300 ? event.error.slice(0, 300) + '...' : event.error;
+        details.push(`<pre style="font-size: 11px; margin: 4px 0 0 0; padding: 6px; background: var(--bg-tertiary); border-radius: 4px; overflow-x: auto; white-space: pre-wrap;">${escapeHtml(truncated)}</pre>`);
+      }
+    } else if (failureReason === 'build_timeout') {
+      title = 'Build Timeout';
+    } else if (event.error) {
+      details.push(escapeHtml(event.error));
+    }
+
+    if (event.main_commit_hash) {
+      details.push(`Against main: <code style="background: var(--bg-tertiary); padding: 1px 4px; border-radius: 3px;">${escapeHtml(event.main_commit_hash)}</code>`);
+    }
+
+    return `
+      <div class="merge-event merge-event-failure" style="display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; background: rgba(248, 81, 73, 0.1); border-radius: 4px; border-left: 3px solid var(--red);">
+        <span style="color: var(--red); font-size: 14px;">✗</span>
+        <div style="flex: 1;">
+          <div style="font-weight: 500; color: var(--red);">${title}</div>
+          ${details.length > 0 ? `<div style="font-size: 12px; color: var(--text-secondary); margin-top: 2px;">${details.join('<br>')}</div>` : ''}
+          ${ts ? `<div style="font-size: 11px; color: var(--text-dim); margin-top: 4px;">${ts}</div>` : ''}
+        </div>
+      </div>
+    `;
+  });
+
+  return `
+    <div class="revision-merge-events" style="margin-top: 12px; display: flex; flex-direction: column; gap: 8px;">
+      ${items.join('')}
+    </div>
+  `;
+}
+
+function renderDiffContent(content) {
+  if (!content) return '<div class="empty-state"><p>No diff content</p></div>';
+
+  const lines = content.split('\n');
+  let lineNumOld = 0;
+  let lineNumNew = 0;
+  let inLeanFile = false;
+
+  const renderedLines = lines.map(line => {
+    let cls = 'line-ctx';
+    let sign = ' ';
+
+    // Check if we're entering a Lean file
+    if (line.startsWith('diff --git') && (line.includes('.lean') || line.includes('.lake'))) {
+      inLeanFile = true;
+    } else if (line.startsWith('diff --git')) {
+      inLeanFile = false;
+    }
+
+    if (line.startsWith('+++') || line.startsWith('---') || line.startsWith('diff --git') || line.startsWith('index ')) {
+      cls = 'line-header';
+      sign = '';
+    } else if (line.startsWith('@@')) {
+      cls = 'line-hunk';
+      sign = '';
+      // Parse hunk header for line numbers
+      const match = line.match(/@@ -(\d+)/);
+      if (match) lineNumOld = parseInt(match[1], 10) - 1;
+      const matchNew = line.match(/@@ -\d+(?:,\d+)? \+(\d+)/);
+      if (matchNew) lineNumNew = parseInt(matchNew[1], 10) - 1;
+    } else if (line.startsWith('+')) {
+      cls = 'line-add';
+      sign = '+';
+      lineNumNew++;
+    } else if (line.startsWith('-')) {
+      cls = 'line-del';
+      sign = '-';
+      lineNumOld++;
+    } else {
+      lineNumOld++;
+      lineNumNew++;
+    }
+
+    // Get the code content (strip the leading +/- for syntax highlighting)
+    let codeContent = line;
+    if (cls === 'line-add' || cls === 'line-del') {
+      codeContent = line.slice(1);
+    }
+
+    // Apply Lean syntax highlighting if in a Lean file
+    let highlightedContent;
+    if (inLeanFile && (cls === 'line-add' || cls === 'line-del' || cls === 'line-ctx')) {
+      highlightedContent = hljs.highlight(codeContent, { language: 'lean', ignoreIllegals: true }).value;
+    } else {
+      highlightedContent = escapeHtml(codeContent);
+    }
+
+    // Build the line HTML
+    const lineNumDisplay = cls === 'line-header' || cls === 'line-hunk' ? '' :
+                           cls === 'line-add' ? lineNumNew :
+                           cls === 'line-del' ? lineNumOld :
+                           lineNumNew;
+
+    return `<span class="diff-line ${cls}"><span class="diff-line-num">${lineNumDisplay}</span><span class="diff-line-sign">${sign}</span><code>${highlightedContent}</code></span>`;
+  });
+
+  return `<div class="diff-content">${renderedLines.join('')}</div>`;
+}
+
+// ─── Code Rendering ──────────────────────────────────────────────
+function renderCodeBlock(code, lang = '') {
+  const langClass = lang ? `language-${lang}` : '';
+  return `
+    <div style="position: relative;">
+      <pre><code class="${langClass}">${escapeHtml(code)}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+  `;
+}
+
+function copyCode(btn) {
+  const code = btn.previousElementSibling.textContent;
+  navigator.clipboard.writeText(code);
+  btn.textContent = 'Copied!';
+  setTimeout(() => btn.textContent = 'Copy', 1500);
+}
+
+// ─── Utilities ───────────────────────────────────────────────────
+function parseDiffStats(diff) {
+  // Parse diff content to compute additions and deletions
+  // Matches Python's parse_diff_stats in lean_utils.py
+  if (typeof diff !== 'string') return { '+': 0, '-': 0 };
+  const lines = diff.split('\n');
+  let additions = 0;
+  let deletions = 0;
+  for (const line of lines) {
+    if (line.startsWith('+') && !line.startsWith('+++')) {
+      additions++;
+    } else if (line.startsWith('-') && !line.startsWith('---')) {
+      deletions++;
+    }
+  }
+  return { '+': additions, '-': deletions };
+}
+
+function escapeHtml(str) {
+  if (typeof str !== 'string') return '';
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function renderMarkdown(str) {
+  if (typeof str !== 'string' || !str.trim()) return '';
+  try {
+    // Configure marked with safe options
+    marked.setOptions({
+      breaks: true,
+      gfm: true,
+      headerIds: false,
+      mangle: false
+    });
+    return marked.parse(str);
+  } catch (e) {
+    // Fallback to escaped text if markdown parsing fails
+    console.warn('Markdown parsing failed:', e);
+    return escapeHtml(str);
+  }
+}
+
+function formatTime(ts) {
+  if (!ts) return '—';
+  try {
+    const d = new Date(ts);
+    return d.toLocaleTimeString();
+  } catch {
+    return ts;
+  }
+}
+
+function formatDuration(seconds) {
+  if (!seconds) return '—';
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+
+  if (h > 0) return `${h}h ${m}m ${s}s`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+
+function formatAgentRuntime(agent) {
+  if (!agent.start_ts) return '—';
+  const start = new Date(agent.start_ts);
+  const end = agent.done_ts ? new Date(agent.done_ts) : new Date();
+  const seconds = (end - start) / 1000;
+  const suffix = agent.done_ts ? '' : '+';
+  return formatDuration(seconds) + suffix;
+}
+
+function formatDiffStats(agent) {
+  const diffStats = agent.diff_stats || {};
+  const additions = diffStats['+'];
+  const deletions = diffStats['-'];
+  if (additions === undefined && deletions === undefined) return '—';
+  const addStr = additions ? `<span style="color: var(--green);">+${additions}</span>` : '';
+  const delStr = deletions ? `<span style="color: var(--red);">-${deletions}</span>` : '';
+  if (!addStr && !delStr) return '—';
+  return `<span style="white-space: nowrap;">${[addStr, delStr].filter(Boolean).join(' ')}</span>`;
+}
+
+function formatBytes(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+// ─── Init ────────────────────────────────────────────────────────
+(async function() {
+  await loadRunList();
+  const params = new URLSearchParams(window.location.search);
+  const path = params.get('path') || params.get('run');
+  const page = params.get('page');
+  const agentId = params.get('agent');
+
+  if (path) {
+    document.getElementById('runSelector').value = path;
+    currentRun = path;
+
+    // Set initial page state from URL
+    if (page === 'dialog' && agentId) {
+      currentPage = 'dialog';
+      currentAgentId = agentId;
+    } else if (page === 'pr' && agentId) {
+      currentPage = 'pr';
+      currentAgentId = agentId;
+    } else if (page === 'logs') {
+      currentPage = 'logs';
+      currentAgentId = null;
+    }
+
+    loadSession(path);
+    connectWebSocket(path);
+  } else {
+    // Auto-select the most recent run (first option after the placeholder)
+    const selector = document.getElementById('runSelector');
+    if (selector.options.length > 1) {
+      const mostRecent = selector.options[1].value;
+      selector.value = mostRecent;
+      selectRun(mostRecent);
+    }
+  }
+
+  // Handle browser back/forward
+  window.addEventListener('popstate', () => {
+    const params = new URLSearchParams(window.location.search);
+    const path = params.get('path');
+    const page = params.get('page');
+    const agentId = params.get('agent');
+
+    if (path && path !== currentRun) {
+      selectRun(path);
+    } else if (path) {
+      if (page === 'dialog' && agentId) {
+        currentPage = 'dialog';
+        currentAgentId = agentId;
+      } else if (page === 'pr' && agentId) {
+        currentPage = 'pr';
+        currentAgentId = agentId;
+      } else if (page === 'logs') {
+        currentPage = 'logs';
+        currentAgentId = null;
+      } else {
+        currentPage = 'main';
+        currentAgentId = null;
+      }
+      renderCurrentPage();
+    }
+  });
+})();
+</script>
+</body>
+</html>

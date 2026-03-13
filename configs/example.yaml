@@ -1,0 +1,16 @@
+# RepoProver stool launcher config
+name: algcomb-run1
+project: /path/to/lean/project
+
+# Coordinator settings
+pool_size: 10           # Lean REPL instances per node
+agents_per_target: 1    # Max agents per theorem/issue
+clean: false            # Wipe state and restart from scratch
+prs_to_issues: false    # Convert pending PRs to issues on resume
+
+# SLURM settings
+launcher: sbatch        # sbatch | bash (if in salloc)
+nodes: 8
+ncpu: 80
+partition: default
+time: -1                # -1 = partition max
