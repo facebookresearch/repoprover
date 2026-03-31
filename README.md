@@ -1,8 +1,13 @@
 # RepoProver
 
-Code for *Automatic Textbook Formalization* (Gloeckle, Rammal, Arnal, Munos, Cabannes, Synnaeve, Hayat, 2026).
+[![Paper](https://img.shields.io/badge/Paper-PDF-red.svg)](auto_textbook_formalization.pdf)
+[![Artifact](https://img.shields.io/badge/Artifact-GitHub-blue.svg)](https://github.com/facebookresearch/algebraic-combinatorics)
+
+Code for [Automatic Textbook Formalization (Gloeckle, Rammal, Arnal, Munos, Cabannes, Synnaeve, Hayat, 2026)](auto_textbook_formalization.pdf).
 
 RepoProver is a multi-agent scaffold for large-scale formalization of mathematics textbooks in Lean. It orchestrates multiple LLM agents that collaborate on a shared git repository with the Lean project: sketcher agents translate definitions and theorem statements, prover agents fill in proofs, and reviewer agents enforce quality via pull request reviews. Coordination happens through a lightweight file-system-based issue tracker and a merge queue that ensures the main branch always builds.
+
+This code produced an [automatic formalization](https://github.com/facebookresearch/algebraic-combinatorics) of the graduate textbook [Algebraic Combinatorics](https://arxiv.org/abs/2506.00738) by Darij Grinberg.
 
 ## Setup
 
