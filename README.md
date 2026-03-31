@@ -1,7 +1,9 @@
 # RepoProver
 
-[![Paper](https://img.shields.io/badge/Paper-PDF-red.svg)](auto_textbook_formalization.pdf)
-[![Artifact](https://img.shields.io/badge/Artifact-GitHub-blue.svg)](https://github.com/facebookresearch/algebraic-combinatorics)
+[![Paper PDF](https://img.shields.io/badge/Paper-PDF-red?style=for-the-badge)](paper.pdf)
+[![Formalization](https://img.shields.io/badge/Formalization-GitHub-green?style=for-the-badge)](https://github.com/facebookresearch/algebraic-combinatorics)
+[![Blueprint Website](https://img.shields.io/badge/Blueprint-Website-blue?style=for-the-badge)](https://faabian.github.io/algebraic-combinatorics/)
+[![Blueprint PDF](https://img.shields.io/badge/Blueprint-PDF-red?style=for-the-badge)](https://github.com/facebookresearch/algebraic-combinatorics/blob/main/blueprint/print/print.pdf)
 
 Code for [Automatic Textbook Formalization (Gloeckle, Rammal, Arnal, Munos, Cabannes, Synnaeve, Hayat, 2026)](auto_textbook_formalization.pdf).
 
