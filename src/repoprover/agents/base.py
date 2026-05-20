@@ -52,7 +52,7 @@ PROVIDER_API_KEY_ENV = {
 }
 
 PROVIDER_DEFAULT_MODELS = {
-    "anthropic": "claude-sonnet-4-20250514",
+    "anthropic": "claude-sonnet-4-6",
     "openai": "gpt-4o",
     "google": "gemini-2.5-flash",
 }
@@ -79,7 +79,7 @@ class AgentConfig:
 
     def __post_init__(self) -> None:
         if not self.model:
-            self.model = PROVIDER_DEFAULT_MODELS.get(self.provider, "claude-sonnet-4-20250514")
+            self.model = PROVIDER_DEFAULT_MODELS.get(self.provider, "claude-sonnet-4-6")
 
 
 @dataclass

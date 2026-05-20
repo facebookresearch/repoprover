@@ -15,6 +15,7 @@ from .agents.lean_tools import (
     configure_global_pool,
     shutdown_global_pool,
 )
+from .agents.base import AgentConfig
 from .coordinator import BookCoordinator, BookCoordinatorConfig
 from .distributed import (
     DistributedWorker,
@@ -314,6 +315,11 @@ def _run_coordinator(base_project: Path, args: argparse.Namespace) -> int:
     # Use directory name as book_id
     book_id = base_project.name
 
+    agent_config = AgentConfig(
+        provider=args.provider,
+        model=args.model,  # empty string falls through to provider default
+    )
+
     config = BookCoordinatorConfig(
         book_id=book_id,
         title=book_id,
@@ -323,6 +329,9 @@ def _run_coordinator(base_project: Path, args: argparse.Namespace) -> int:
         runs_dir=runs_dir,
         prs_to_issues=args.prs_to_issues,
         agents_per_target=args.agents_per_target,
+        serial_mode=args.serial_mode,
+        statements_only=args.statements_only,
+        agent_config=agent_config,
     )
 
     # Skip loading state if: initializing, reinitializing, or cleaning
@@ -459,6 +468,35 @@ def main() -> int:
         default=1,
         dest="agents_per_target",
         help="Max agents per theorem/issue. Effective = min(this, 32 // n_targets) (default: 1)",
+    )
+    p_run.add_argument(
+        "--serial",
+        action="store_true",
+        dest="serial_mode",
+        help="Run exactly one agent at a time across all pools (sketchers, provers, "
+        "maintainers, scanners, progress, triage, reviewers). Clamps all concurrency "
+        "caps to 1 and adds a global launch-gate. Slow but deterministic.",
+    )
+    p_run.add_argument(
+        "--statements-only",
+        action="store_true",
+        dest="statements_only",
+        help="Skip provers and scanners entirely. Sketcher writes statements with "
+        "`sorry` proofs; reviewer + maintainer still run for statement-level QA. "
+        "No agent ever attempts to fill a sorry.",
+    )
+    p_run.add_argument(
+        "--provider",
+        type=str,
+        default="anthropic",
+        choices=["anthropic", "openai", "google"],
+        help="LLM provider (default: anthropic)",
+    )
+    p_run.add_argument(
+        "--model",
+        type=str,
+        default="",
+        help="LLM model name (default: provider default — claude-sonnet-4-6 for anthropic)",
     )
 
     # export

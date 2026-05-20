@@ -103,6 +103,30 @@ class BookCoordinatorConfig:
     # With 32 sorries and agents_per_target=8 → 1 prover each (32//32=1 cap)
     agents_per_target: int = 1
 
+    # Serial mode: only one agent task runs at a time across all pools
+    # (sketchers, provers, maintainers, scanners, progress, triage, reviewers).
+    # Forces every concurrency cap to 1 AND gates every launch step on
+    # "no other task currently running anywhere". Use for deterministic,
+    # observable runs at the cost of throughput.
+    serial_mode: bool = False
+
+    # Statements-only mode: skip the prover/scanner pipeline entirely.
+    # Sketcher writes statements with `sorry` bodies, reviewer + maintainer
+    # gate the statement-level PRs, but no agent ever attempts to fill a sorry.
+    # The codebase ends up with sketched statements and `sorry` proofs.
+    statements_only: bool = False
+
+    def __post_init__(self) -> None:
+        if self.serial_mode:
+            # Clamp every cap to 1; the global gate in _run_async enforces the
+            # cross-pool invariant, but the per-pool caps still need to be
+            # consistent with that contract so launch math doesn't try to
+            # exceed them.
+            self.max_concurrent_contributors = 1
+            self.max_concurrent_sketchers = 1
+            self.lean_pool_size = 1
+            self.agents_per_target = 1
+
 
 # =============================================================================
 # Simple PR tracking (PR = branch name + status)
@@ -1486,6 +1510,32 @@ class BookCoordinator:
         """Stop the run loop."""
         self._running = False
 
+    def _any_task_running(self) -> bool:
+        """True if ANY agent task is in flight across any pool.
+
+        Used by serial_mode to gate all launch steps so that exactly one
+        agent runs at a time and the next agent only fires after the previous
+        one has been harvested (i.e. its PR has landed in state and reviewers
+        / mergers have had a chance to react).
+        """
+        return bool(
+            self._agent_tasks
+            or self._maintain_tasks
+            or self._scanner_tasks
+            or self._progress_tasks
+            or self._triage_tasks
+            or self._review_tasks
+        )
+
+    def _serial_gate_blocked(self, step_name: str) -> bool:
+        """If serial_mode is on and any task is running, block this launch step."""
+        if not self.config.serial_mode:
+            return False
+        if self._any_task_running():
+            logger.debug(f"[SERIAL] {step_name} blocked: another task running")
+            return True
+        return False
+
     def _log_status_summary(self) -> None:
         """Log a summary of current coordinator status."""
         # Count tasks
@@ -1626,6 +1676,8 @@ class BookCoordinator:
         _harvest_completed_agents().
         """
         if self._draining:
+            return False
+        if self._serial_gate_blocked("sketchers"):
             return False
 
         chapters_to_launch = []
@@ -1929,6 +1981,8 @@ class BookCoordinator:
         """
         if self._draining:
             return False
+        if self._serial_gate_blocked("triage"):
+            return False
 
         # Check if we already have a triage agent running
         if self._triage_tasks:
@@ -1971,6 +2025,11 @@ class BookCoordinator:
         NOTE: Using ContributorAgent scan mode for unified scanning.
         """
         if self._draining:
+            return False
+        if self.config.statements_only:
+            # Scanners exist to find sorries for provers to fill; no point.
+            return False
+        if self._serial_gate_blocked("scanners"):
             return False
 
         # Check timing - only run periodically
@@ -2021,6 +2080,8 @@ class BookCoordinator:
         NOTE: Using ContributorAgent progress mode.
         """
         if self._draining:
+            return False
+        if self._serial_gate_blocked("progress"):
             return False
 
         # Check timing - only run periodically
@@ -2247,6 +2308,8 @@ class BookCoordinator:
         """
         if self._draining:
             return False
+        if self._serial_gate_blocked("maintain"):
+            return False
 
         made_progress = False
 
@@ -2441,6 +2504,8 @@ class BookCoordinator:
         """
         if self._draining:
             return False
+        if self._serial_gate_blocked("revisions"):
+            return False
 
         prs_to_revise = [pr for pr in self.state.prs.values() if pr.status == "needs_revision"]
 
@@ -2573,6 +2638,8 @@ class BookCoordinator:
         reviews are launched with small random delays between them.
         """
         if self._draining:
+            return False
+        if self._serial_gate_blocked("reviews"):
             return False
 
         prs_to_review = [pr for pr in self.state.prs.values() if pr.status == "pending_review"]
@@ -3124,6 +3191,11 @@ class BookCoordinator:
         Effective agents = min(agents_per_target, 32 // n_sorries)
         """
         if self._draining:
+            return False
+        if self.config.statements_only:
+            # In statements-only mode we never fill sorries.
+            return False
+        if self._serial_gate_blocked("provers"):
             return False
 
         # Scan all lean files for sorries - this is the source of truth
