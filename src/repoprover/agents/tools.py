@@ -533,6 +533,10 @@ def run_tool_loop(
 
         # Build assistant message for history (OpenAI format)
         assistant_message: dict[str, Any] = {"role": "assistant", "content": text}
+        # Preserve reasoning_content for providers with thinking mode (e.g. DeepSeek)
+        reasoning = getattr(message, 'reasoning_content', None)
+        if reasoning:
+            assistant_message["reasoning_content"] = reasoning
 
         tool_calls_in_response = []
         if message.tool_calls:

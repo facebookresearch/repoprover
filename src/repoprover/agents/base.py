@@ -43,18 +43,21 @@ PROVIDER_BASE_URLS = {
     "anthropic": "https://api.anthropic.com/v1/",
     "openai": "https://api.openai.com/v1/",
     "google": "https://generativelanguage.googleapis.com/v1beta/openai/",
+    "deepseek": "https://api.deepseek.com",
 }
 
 PROVIDER_API_KEY_ENV = {
     "anthropic": "ANTHROPIC_API_KEY",
     "openai": "OPENAI_API_KEY",
     "google": "GEMINI_API_KEY",
+    "deepseek": "DEEPSEEK_API_KEY",
 }
 
 PROVIDER_DEFAULT_MODELS = {
     "anthropic": "claude-sonnet-4-20250514",
     "openai": "gpt-4o",
     "google": "gemini-2.5-flash",
+    "deepseek": "deepseek-v4-pro",
 }
 
 
@@ -149,10 +152,13 @@ def create_client(config: AgentConfig) -> OpenAI:
         if not api_key:
             raise ValueError(f"API key not found. Set {env_var} environment variable or pass api_key in AgentConfig.")
 
+    headers = {}
+    if config.provider == "anthropic":
+        headers["anthropic-beta"] = ""
     return OpenAI(
         base_url=base_url,
         api_key=api_key,
-        default_headers={"anthropic-beta": ""},
+        default_headers=headers,
     )
 
 

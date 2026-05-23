@@ -25,3 +25,8 @@ analysis = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: tests that require a real API key and network access",
+]
